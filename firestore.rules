@@ -26,17 +26,21 @@ service cloud.firestore {
     }
 
     function isValidUserWorkspace(data) {
-      return data.keys().hasOnly(['schedules', 'tasks', 'notifSettings', 'email', 'displayName', 'photoURL', 'uid', 'createdAt', 'updatedAt', 'lastLogin']) &&
-        (!('schedules' in data) || (data.schedules is map && data.schedules.size() <= 20)) &&
-        (!('tasks' in data) || (data.tasks is list && data.tasks.size() <= 500 && (data.tasks.size() == 0 || data.tasks[0] is map))) &&
-        (!('notifSettings' in data) || (data.notifSettings is map && data.notifSettings.size() <= 10));
+      return data.keys().hasOnly([
+        'schedules', 'tasks', 'notifSettings',
+        'email', 'displayName', 'photoURL', 'uid', 'id', 'name',
+        'createdAt', 'updatedAt', 'lastLogin',
+        'activeSemester', 'theme', 'settings', 'preferences', 'metadata', 'status'
+      ]) &&
+      (!('schedules' in data) || (data.schedules is map && data.schedules.size() <= 30)) &&
+      (!('tasks' in data) || (data.tasks is list && data.tasks.size() <= 500)) &&
+      (!('notifSettings' in data) || (data.notifSettings is map && data.notifSettings.size() <= 20));
     }
 
     match /users/{userId} {
-      allow get: if isOwner(userId) && isValidId(userId);
+      allow read: if isOwner(userId) && isValidId(userId);
       allow create: if isOwner(userId) && isValidId(userId) && isValidUserWorkspace(incoming());
-      allow update: if isOwner(userId) && isValidId(userId) && isValidUserWorkspace(incoming()) &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['schedules', 'tasks', 'notifSettings', 'email', 'displayName', 'photoURL', 'uid', 'createdAt', 'updatedAt', 'lastLogin']);
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUserWorkspace(incoming());
       allow delete: if isOwner(userId) && isValidId(userId);
     }
   }

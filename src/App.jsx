@@ -38,22 +38,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // 1. Process redirect result on web (if user was redirected)
+    let isMounted = true;
+
+    // 1. Process redirect result on web (only if redirect was explicitly started)
     if (!Capacitor.isNativePlatform()) {
+      const isRedirectPending = sessionStorage.getItem('aio_auth_redirect_pending') === 'true';
       getRedirectResult(auth)
         .then((result) => {
+          if (!isMounted) return;
           if (result?.user) {
             setUser(result.user);
           }
         })
         .catch((error) => {
-          console.error("Redirect sign-in error:", error);
-          setLoginError(error.message || "Failed to complete redirect sign-in.");
+          if (!isMounted) return;
+          // Only show error if the user actually clicked sign-in and was redirected.
+          // In iframe or fresh launch, getRedirectResult can fail due to restricted cookies/storage
+          // and must not show a false "Login Failed" banner on launch.
+          if (isRedirectPending) {
+            console.error("Redirect sign-in error:", error);
+            setLoginError(error.message || "Failed to complete redirect sign-in.");
+          } else {
+            console.info("Launch auth status notice:", error?.code || error);
+          }
+        })
+        .finally(() => {
+          sessionStorage.removeItem('aio_auth_redirect_pending');
         });
     }
 
     // 2. Initialize native GoogleAuth on mobile
-    if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform() && firebaseConfig.oAuthClientId) {
       GoogleAuth.initialize({
         clientId: firebaseConfig.oAuthClientId,
         scopes: ['profile', 'email'],
@@ -67,22 +82,30 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(
       auth,
       (currentUser) => {
+        if (!isMounted) return;
         setUser(currentUser);
         setLoadingAuth(false);
       },
       (error) => {
-        console.error("Auth state change error:", error);
-        setLoginError(error.message || "Failed to restore authentication session.");
+        if (!isMounted) return;
+        console.warn("Auth state observer notice:", error);
         setLoadingAuth(false);
       }
     );
 
-    return () => unsubscribe(); 
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    }; 
   }, []);
 
   const handleLogin = async () => {
     setLoginError(null);
     try {
+      if (!firebaseConfig.apiKey) {
+        throw new Error("Firebase API key is not configured. Please supply environment variables (.env).");
+      }
+
       if (Capacitor.isNativePlatform()) {
         try {
           await GoogleAuth.initialize({
@@ -112,7 +135,13 @@ export default function App() {
             popupErr.code === 'auth/operation-not-supported-in-this-environment'
           ) {
             console.warn("Sign-in popup blocked or unsupported, falling back to redirect...");
-            await signInWithRedirect(auth, googleProvider);
+            try {
+              sessionStorage.setItem('aio_auth_redirect_pending', 'true');
+              await signInWithRedirect(auth, googleProvider);
+            } catch (redirectErr) {
+              sessionStorage.removeItem('aio_auth_redirect_pending');
+              throw redirectErr;
+            }
           } else if (popupErr.code === 'auth/popup-closed-by-user') {
             console.log("User closed sign-in popup.");
           } else {
@@ -122,7 +151,15 @@ export default function App() {
       }
     } catch (error) {
       console.error("Login Error:", error);
-      setLoginError(error.message || JSON.stringify(error));
+      if (error?.code === 'auth/unauthorized-domain') {
+        setLoginError(`Domain "${window.location.hostname}" is not authorized. Add it to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
+      } else if (error?.code === 'auth/popup-blocked') {
+        setLoginError("Pop-up blocked. Please allow pop-ups for this site or try again.");
+      } else if (error?.code === 'auth/network-request-failed') {
+        setLoginError("Network request failed. Please check your internet connection.");
+      } else {
+        setLoginError(error.message || JSON.stringify(error));
+      }
     }
   };
 
@@ -142,6 +179,11 @@ export default function App() {
             AIO Calender
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mb-8 font-medium">Sign in to sync your schedule across all devices.</p>
+          {!firebaseConfig.apiKey && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs text-left">
+              Firebase is not yet configured. Please supply your Firebase settings via <code>.env</code>.
+            </div>
+          )}
           {loginError && (
             <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 text-xs text-left break-words">
               Login Failed: {loginError}
@@ -321,9 +363,14 @@ function MainDashboard({ user }) {
         setNotifSettings(data.notifSettings || defaultNotifs);
       } else {
         setDoc(userRef, {
+          email: user.email || '',
+          displayName: user.displayName || '',
+          photoURL: user.photoURL || '',
+          uid: user.uid,
           schedules: { 'Monsoon 2026': [] },
           tasks: [],
-          notifSettings: defaultNotifs
+          notifSettings: defaultNotifs,
+          updatedAt: new Date().toISOString()
         }, { merge: true }).catch(err => {
           setSyncError(err.message);
           handleFirestoreError(err, OperationType.WRITE, userDocPath);
@@ -334,14 +381,17 @@ function MainDashboard({ user }) {
       handleFirestoreError(error, OperationType.GET, userDocPath);
     });
     return () => unsubscribe();
-  }, [user.uid, userDocPath]);
+  }, [user.uid, userDocPath, user.email, user.displayName, user.photoURL]);
 
   // ----------------------------------------
   // CLOUD WRITE FUNCTIONS
   // ----------------------------------------
   const saveUserFields = async (fields) => {
     try {
-      await setDoc(doc(db, 'users', user.uid), fields, { merge: true });
+      await setDoc(doc(db, 'users', user.uid), {
+        ...fields,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
     } catch (error) {
       setSyncError(error.message);
       handleFirestoreError(error, OperationType.WRITE, userDocPath);
@@ -422,7 +472,10 @@ function MainDashboard({ user }) {
           <p className="text-red-600 dark:text-red-300 font-mono text-xs bg-red-50 dark:bg-red-950/30 p-3 rounded mb-4 overflow-auto break-words text-left">
             {syncError}
           </p>
-          <button onClick={() => { signOut(auth); window.location.reload(); }} className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg w-full">Sign Out & Try Again</button>
+          <div className="flex flex-col gap-2">
+            <button onClick={() => { setSyncError(null); }} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg w-full transition-colors cursor-pointer">Retry Connection</button>
+            <button onClick={() => { signOut(auth); window.location.reload(); }} className="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold py-2 px-6 rounded-lg w-full transition-colors cursor-pointer">Sign Out & Reload</button>
+          </div>
         </div>
       </div>
     );

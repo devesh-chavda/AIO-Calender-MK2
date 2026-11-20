@@ -7,15 +7,29 @@ import {
 } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
+// Safely load local applet config if present (e.g. injected in AI Studio or local dev)
+let appletConfig = {};
+try {
+  const configs = import.meta.glob(['/firebase-applet-config.json', '../firebase-applet-config.json'], { eager: true });
+  for (const path in configs) {
+    if (configs[path]) {
+      appletConfig = configs[path].default || configs[path];
+      break;
+    }
+  }
+} catch {
+  // Gracefully fallback when file is not present
+}
+
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "aio-calender-mk2.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "aio-calender-mk2",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "aio-calender-mk2.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "20006102155",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || "ai-studio-aiocalender-62e59b5f-324d-498b-8697-7b3619f93095",
-  oAuthClientId: import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || "20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || appletConfig.apiKey || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain || "aio-calender-mk2.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || appletConfig.projectId || "aio-calender-mk2",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || "aio-calender-mk2.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId || "20006102155",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || appletConfig.appId || "",
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || appletConfig.firestoreDatabaseId || "ai-studio-aiocalender-62e59b5f-324d-498b-8697-7b3619f93095",
+  oAuthClientId: import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || appletConfig.oAuthClientId || "20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com"
 };
 
 // Initialize or reuse Firebase App
