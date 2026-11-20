@@ -52,9 +52,6 @@ export default function App() {
         })
         .catch((error) => {
           if (!isMounted) return;
-          // Only show error if the user actually clicked sign-in and was redirected.
-          // In iframe or fresh launch, getRedirectResult can fail due to restricted cookies/storage
-          // and must not show a false "Login Failed" banner on launch.
           if (isRedirectPending) {
             console.error("Redirect sign-in error:", error);
             setLoginError(error.message || "Failed to complete redirect sign-in.");
@@ -133,7 +130,7 @@ export default function App() {
         if (!idToken) {
           throw new Error("Unable to obtain Google ID token. Please try again.");
         }
-        const credential = GoogleAuthProvider.credential(idToken);
+        const credential = GoogleAuthProvider.credential(idToken, googleUser?.authentication?.accessToken || null);
         await signInWithCredential(auth, credential);
       } else {
         // Web / Vercel / AI Studio: Popup with redirect fallback
@@ -169,7 +166,7 @@ export default function App() {
       } else if (code === 'auth/popup-blocked') {
         setLoginError("Pop-up blocked. Please allow pop-ups for this site or try again.");
       } else if (code === 'auth/network-request-failed') {
-        setLoginError("Network request failed. Please check your internet connection.");
+        setLoginError(`Network request failed (${rawMsg || code}). Please verify connection.`);
       } else {
         const displayCode = code && !rawMsg.includes(String(code)) ? ` [Code: ${code}]` : '';
         setLoginError(`${rawMsg}${displayCode}`);

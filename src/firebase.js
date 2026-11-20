@@ -6,6 +6,7 @@ import {
   persistentMultipleTabManager
 } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
 
 // Safely load local applet config if present (e.g. injected in AI Studio or local dev)
 let appletConfig = {};
@@ -34,7 +35,8 @@ const decodeIdentifier = (str) => {
   return '';
 };
 
-const FALLBACK_CONFIG = {
+// Web / AI Studio project configuration
+const WEB_FALLBACK_CONFIG = {
   apiKey: decodeIdentifier('QUl6YVN5QnI3R180dmdSSmRnRy1vRnhmMUJXLTFRSktndHRyd0k0'),
   authDomain: 'aio-calender-mk2.firebaseapp.com',
   projectId: 'aio-calender-mk2',
@@ -45,16 +47,30 @@ const FALLBACK_CONFIG = {
   oAuthClientId: '20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com'
 };
 
-export const firebaseConfig = {
-  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || appletConfig.apiKey || FALLBACK_CONFIG.apiKey,
-  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain || FALLBACK_CONFIG.authDomain,
-  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || appletConfig.projectId || FALLBACK_CONFIG.projectId,
-  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || FALLBACK_CONFIG.storageBucket,
-  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId || FALLBACK_CONFIG.messagingSenderId,
-  appId: import.meta.env?.VITE_FIREBASE_APP_ID || appletConfig.appId || FALLBACK_CONFIG.appId,
-  firestoreDatabaseId: import.meta.env?.VITE_FIREBASE_DATABASE_ID || appletConfig.firestoreDatabaseId || FALLBACK_CONFIG.firestoreDatabaseId,
-  oAuthClientId: import.meta.env?.VITE_GOOGLE_OAUTH_CLIENT_ID || appletConfig.oAuthClientId || FALLBACK_CONFIG.oAuthClientId
+// Native Android project configuration (matches package com.aiocalender and registered debug.keystore SHA-1)
+const NATIVE_ANDROID_CONFIG = {
+  apiKey: decodeIdentifier('QUl6YVN5QkZjUWU2SG96ODluOWZaM1kxTlhIcl93TTNkYi13emxV'),
+  authDomain: 'aio-calender.firebaseapp.com',
+  projectId: 'aio-calender',
+  storageBucket: 'aio-calender.firebasestorage.app',
+  messagingSenderId: '961314076425',
+  appId: decodeIdentifier('MTo5NjEzMTQwNzY0MjU6d2ViOjVmNDM1MDhmM2I1Mzg0MGFmMTg1ZDg='),
+  firestoreDatabaseId: undefined,
+  oAuthClientId: '961314076425-u40ge3pvq3loqj7sro38u9p6ucl592jo.apps.googleusercontent.com'
 };
+
+export const firebaseConfig = Capacitor.isNativePlatform()
+  ? NATIVE_ANDROID_CONFIG
+  : {
+      apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || appletConfig.apiKey || WEB_FALLBACK_CONFIG.apiKey,
+      authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain || WEB_FALLBACK_CONFIG.authDomain,
+      projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || appletConfig.projectId || WEB_FALLBACK_CONFIG.projectId,
+      storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || WEB_FALLBACK_CONFIG.storageBucket,
+      messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId || WEB_FALLBACK_CONFIG.messagingSenderId,
+      appId: import.meta.env?.VITE_FIREBASE_APP_ID || appletConfig.appId || WEB_FALLBACK_CONFIG.appId,
+      firestoreDatabaseId: import.meta.env?.VITE_FIREBASE_DATABASE_ID || appletConfig.firestoreDatabaseId || WEB_FALLBACK_CONFIG.firestoreDatabaseId,
+      oAuthClientId: import.meta.env?.VITE_GOOGLE_OAUTH_CLIENT_ID || appletConfig.oAuthClientId || WEB_FALLBACK_CONFIG.oAuthClientId
+    };
 
 // Safely initialize or reuse Firebase App
 function initFirebaseApp() {
@@ -66,7 +82,7 @@ function initFirebaseApp() {
   } catch (err) {
     console.error("Firebase App initialization notice:", err);
     try {
-      return initializeApp(FALLBACK_CONFIG);
+      return initializeApp(Capacitor.isNativePlatform() ? NATIVE_ANDROID_CONFIG : WEB_FALLBACK_CONFIG);
     } catch (fallbackErr) {
       console.error("Firebase App fallback initialization failed:", fallbackErr);
       return null;
@@ -79,13 +95,14 @@ const app = initFirebaseApp();
 // Initialize Firestore safely with fallback
 function initFirestoreInstance() {
   if (!app) return null;
+  const dbArgs = firebaseConfig.firestoreDatabaseId ? [firebaseConfig.firestoreDatabaseId] : [];
   try {
     return initializeFirestore(
       app,
       {
         localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
       },
-      firebaseConfig.firestoreDatabaseId
+      ...dbArgs
     );
   } catch (err) {
     console.warn("Falling back to standard Firestore initialization:", err);
@@ -93,11 +110,11 @@ function initFirestoreInstance() {
       return initializeFirestore(
         app,
         {},
-        firebaseConfig.firestoreDatabaseId
+        ...dbArgs
       );
     } catch {
       try {
-        return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+        return getFirestore(app, ...dbArgs);
       } catch (e) {
         console.error("Firestore initialization failed:", e);
         return null;
