@@ -71,6 +71,7 @@ export default function App() {
     if (Capacitor.isNativePlatform() && firebaseConfig.oAuthClientId) {
       GoogleAuth.initialize({
         clientId: firebaseConfig.oAuthClientId,
+        serverClientId: firebaseConfig.oAuthClientId,
         scopes: ['profile', 'email'],
         grantOfflineAccess: false,
       }).catch((err) => {
@@ -119,6 +120,7 @@ export default function App() {
         try {
           await GoogleAuth.initialize({
             clientId: firebaseConfig.oAuthClientId,
+            serverClientId: firebaseConfig.oAuthClientId,
             scopes: ['profile', 'email'],
             grantOfflineAccess: false,
           });
@@ -160,14 +162,17 @@ export default function App() {
       }
     } catch (error) {
       console.error("Login Error:", error);
-      if (error?.code === 'auth/unauthorized-domain') {
+      const code = error?.code || error?.statusCode;
+      const rawMsg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+      if (code === 'auth/unauthorized-domain') {
         setLoginError(`Domain "${window.location.hostname}" is not authorized. Add it to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
-      } else if (error?.code === 'auth/popup-blocked') {
+      } else if (code === 'auth/popup-blocked') {
         setLoginError("Pop-up blocked. Please allow pop-ups for this site or try again.");
-      } else if (error?.code === 'auth/network-request-failed') {
+      } else if (code === 'auth/network-request-failed') {
         setLoginError("Network request failed. Please check your internet connection.");
       } else {
-        setLoginError(error.message || JSON.stringify(error));
+        const displayCode = code && !rawMsg.includes(String(code)) ? ` [Code: ${code}]` : '';
+        setLoginError(`${rawMsg}${displayCode}`);
       }
     }
   };
