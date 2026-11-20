@@ -207,6 +207,15 @@ export default function App() {
 // ==========================================
 // 2. MAIN APPLICATION DASHBOARD
 // ==========================================
+const DEFAULT_NOTIF_SETTINGS = {
+  classNotifs: true,
+  classLeadTime: '10',
+  taskNotifs: true,
+  taskLeadTime: '60',
+  taskRepeatFrequency: 'daily',
+  vibrateEnabled: true
+};
+
 function MainDashboard({ user }) {
   // ----------------------------------------
   // ALL HOOKS MUST BE AT THE TOP
@@ -252,10 +261,35 @@ function MainDashboard({ user }) {
     };
   };
 
-  // Cloud Data State
-  const [allSchedules, setAllSchedules] = useState(null);
-  const [tasks, setTasks] = useState(null);
-  const [notifSettings, setNotifSettings] = useState(null);
+  // Cloud & Instant Offline-First Local Data State
+  const [allSchedules, setAllSchedules] = useState(() => {
+    try {
+      const saved = localStorage.getItem('aio-cached-schedules');
+      return saved ? JSON.parse(saved) : { 'Monsoon 2026': [] };
+    } catch {
+      return { 'Monsoon 2026': [] };
+    }
+  });
+
+  const [tasks, setTasks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('aio-cached-tasks');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [notifSettings, setNotifSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('aio-cached-notif-settings');
+      return saved ? JSON.parse(saved) : DEFAULT_NOTIF_SETTINGS;
+    } catch {
+      return DEFAULT_NOTIF_SETTINGS;
+    }
+  });
+
+  const [isCloudSynced, setIsCloudSynced] = useState(false);
   const [syncError, setSyncError] = useState(() => (!db ? "Firebase 'db' is not initialized." : null));
 
   // Form State
@@ -345,7 +379,7 @@ function MainDashboard({ user }) {
   }, [allSchedules, tasks, activeSemester, notifSettings]);
 
   // ----------------------------------------
-  // FIREBASE REAL-TIME SYNC LISTENER
+  // FIREBASE REAL-TIME SYNC LISTENER (OFFLINE-FIRST)
   // ----------------------------------------
   const userDocPath = `users/${user.uid}`;
   const [showNewSemInput, setShowNewSemInput] = useState(false);
@@ -353,15 +387,26 @@ function MainDashboard({ user }) {
 
   useEffect(() => {
     if (!db) return;
-    const defaultNotifs = { classNotifs: true, classLeadTime: '10', taskNotifs: true, taskLeadTime: '60', taskRepeatFrequency: 'daily', vibrateEnabled: true };
     const userRef = doc(db, 'users', user.uid);
-    const unsubscribe = onSnapshot(userRef, (docSnap) => {
+    const unsubscribe = onSnapshot(userRef, { includeMetadataChanges: true }, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setAllSchedules(data.schedules || { 'Monsoon 2026': [] });
-        setTasks(data.tasks || []);
-        setNotifSettings(data.notifSettings || defaultNotifs);
+        const scheds = data.schedules || { 'Monsoon 2026': [] };
+        const userTasks = data.tasks || [];
+        const settings = data.notifSettings || DEFAULT_NOTIF_SETTINGS;
+        setAllSchedules(scheds);
+        setTasks(userTasks);
+        setNotifSettings(settings);
+        setIsCloudSynced(!docSnap.metadata.fromCache);
+        try {
+          localStorage.setItem('aio-cached-schedules', JSON.stringify(scheds));
+          localStorage.setItem('aio-cached-tasks', JSON.stringify(userTasks));
+          localStorage.setItem('aio-cached-notif-settings', JSON.stringify(settings));
+        } catch (e) {
+          console.debug("Local storage write notice:", e);
+        }
       } else {
+        setIsCloudSynced(true);
         setDoc(userRef, {
           email: user.email || '',
           displayName: user.displayName || '',
@@ -369,7 +414,7 @@ function MainDashboard({ user }) {
           uid: user.uid,
           schedules: { 'Monsoon 2026': [] },
           tasks: [],
-          notifSettings: defaultNotifs,
+          notifSettings: DEFAULT_NOTIF_SETTINGS,
           updatedAt: new Date().toISOString()
         }, { merge: true }).catch(err => {
           setSyncError(err.message);
@@ -377,24 +422,82 @@ function MainDashboard({ user }) {
         });
       }
     }, (error) => {
-      setSyncError(error.message);
+      console.warn("Firestore snapshot notice:", error);
       handleFirestoreError(error, OperationType.GET, userDocPath);
     });
     return () => unsubscribe();
   }, [user.uid, userDocPath, user.email, user.displayName, user.photoURL]);
 
   // ----------------------------------------
-  // CLOUD WRITE FUNCTIONS
+  // CLOUD WRITE FUNCTIONS (OPTIMISTIC SYNC)
   // ----------------------------------------
   const saveUserFields = async (fields) => {
     try {
+      // 1. Optimistic instant local updates
+      if (fields.schedules) {
+        setAllSchedules(fields.schedules);
+        try { localStorage.setItem('aio-cached-schedules', JSON.stringify(fields.schedules)); } catch (e) { console.debug(e); }
+      }
+      if (fields.tasks) {
+        setTasks(fields.tasks);
+        try { localStorage.setItem('aio-cached-tasks', JSON.stringify(fields.tasks)); } catch (e) { console.debug(e); }
+      }
+      if (fields.notifSettings) {
+        setNotifSettings(fields.notifSettings);
+        try { localStorage.setItem('aio-cached-notif-settings', JSON.stringify(fields.notifSettings)); } catch (e) { console.debug(e); }
+      }
+
+      // 2. Persist to Firestore (persistent cache writes locally first, then syncs to cloud)
       await setDoc(doc(db, 'users', user.uid), {
         ...fields,
         updatedAt: new Date().toISOString()
       }, { merge: true });
     } catch (error) {
+      console.error("Firestore save notice:", error);
       setSyncError(error.message);
       handleFirestoreError(error, OperationType.WRITE, userDocPath);
+    }
+  };
+
+  const handleClearTestingData = async () => {
+    if (!window.confirm("Are you sure you want to clear all test schedule and task data? This will reset your database to a fresh pre-production state.")) {
+      return;
+    }
+    try {
+      const cleanSchedules = { 'Monsoon 2026': [] };
+      const cleanTasks = [];
+      const cleanNotifs = DEFAULT_NOTIF_SETTINGS;
+
+      setAllSchedules(cleanSchedules);
+      setTasks(cleanTasks);
+      setNotifSettings(cleanNotifs);
+      setActiveSemester('Monsoon 2026');
+
+      try {
+        localStorage.removeItem('aio-cached-schedules');
+        localStorage.removeItem('aio-cached-tasks');
+        localStorage.removeItem('aio-cached-notif-settings');
+        localStorage.setItem('aio-active-sem', 'Monsoon 2026');
+      } catch (e) {
+        console.debug(e);
+      }
+
+      await setDoc(doc(db, 'users', user.uid), {
+        email: user.email || '',
+        displayName: user.displayName || '',
+        photoURL: user.photoURL || '',
+        uid: user.uid,
+        schedules: cleanSchedules,
+        tasks: cleanTasks,
+        notifSettings: cleanNotifs,
+        updatedAt: new Date().toISOString()
+      });
+
+      setTestAlertFeedback("Testing data cleared successfully! Database is now in a clean pre-production state.");
+      setTimeout(() => setTestAlertFeedback(null), 7000);
+    } catch (err) {
+      console.error("Failed to clear testing data:", err);
+      setSyncError("Failed to clear testing data: " + err.message);
     }
   };
 
@@ -461,36 +564,7 @@ function MainDashboard({ user }) {
   };
 
   // ----------------------------------------
-  // EARLY RETURNS & LOADING SCREENS
-  // ----------------------------------------
-  if (syncError) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-[#121215] p-6 rounded-xl shadow-sm border border-red-500 text-center max-w-md w-full">
-          <span className="text-4xl mb-4 block">🚨</span>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-red-400 mb-2">Database Connection Failed</h2>
-          <p className="text-red-600 dark:text-red-300 font-mono text-xs bg-red-50 dark:bg-red-950/30 p-3 rounded mb-4 overflow-auto break-words text-left">
-            {syncError}
-          </p>
-          <div className="flex flex-col gap-2">
-            <button onClick={() => { setSyncError(null); }} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg w-full transition-colors cursor-pointer">Retry Connection</button>
-            <button onClick={() => { signOut(auth); window.location.reload(); }} className="bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold py-2 px-6 rounded-lg w-full transition-colors cursor-pointer">Sign Out & Reload</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!allSchedules || !tasks || !notifSettings) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex items-center justify-center">
-        <p className="font-bold text-blue-600 dark:text-red-400 animate-pulse text-lg">Syncing with Cloud...</p>
-      </div>
-    );
-  }
-
-  // ----------------------------------------
-  // MAIN UI RENDER LOGIC
+  // MAIN UI RENDER LOGIC (OFFLINE-FIRST)
   // ----------------------------------------
   const semesters = Object.keys(allSchedules);
   const currentClasses = allSchedules[activeSemester] || [];
@@ -553,9 +627,14 @@ function MainDashboard({ user }) {
               AIO Calender MK2
             </h1>
           </div>
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-800 text-lg hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors shadow-sm">
-            {isDarkMode ? '🌞' : '🌙'}
-          </button>
+          <div className="flex md:hidden items-center gap-2">
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${isCloudSynced ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'}`}>
+              {isCloudSynced ? '☁️ Synced' : '📶 Offline Ready'}
+            </span>
+            <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-lg bg-gray-200 dark:bg-gray-800 text-lg hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors shadow-sm">
+              {isDarkMode ? '🌞' : '🌙'}
+            </button>
+          </div>
         </div>
 
         {/* Desktop Navigation Tabs */}
@@ -580,6 +659,11 @@ function MainDashboard({ user }) {
         {/* Status Bar & Google Account Profile (REORDERED) */}
         <div className="hidden md:flex items-center gap-4">
           
+          {/* Cloud Sync State Badge */}
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${isCloudSynced ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'}`}>
+            {isCloudSynced ? '☁️ Cloud Synced' : '📶 Offline Ready'}
+          </span>
+
           {/* 1. Time Display */}
           <div className="flex items-center gap-3 bg-white dark:bg-[#1a1a20] px-4 py-2 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
             <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{currentDayStr}</span>
@@ -600,6 +684,17 @@ function MainDashboard({ user }) {
 
         </div>
       </header>
+
+      {/* Non-blocking sync notice if any error occurs */}
+      {syncError && (
+        <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-between text-xs text-amber-800 dark:text-amber-200 shrink-0 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span>⚠️</span>
+            <span>{syncError}</span>
+          </div>
+          <button onClick={() => setSyncError(null)} className="font-bold underline cursor-pointer ml-3">Dismiss</button>
+        </div>
+      )}
 
       {/* TAB 1: DASHBOARD */}
       {activeTab === 'dashboard' && (
@@ -1184,15 +1279,44 @@ function MainDashboard({ user }) {
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800">
-            <h2 className="text-xl font-semibold mb-1">Account & Sync</h2>
-            <div className="p-4 mt-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-lg flex justify-between items-center">
+          <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800 space-y-4">
+            <h2 className="text-xl font-semibold mb-1">Account, Cloud & Pre-Production</h2>
+            
+            <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-lg flex justify-between items-center">
               <div>
-                <span className="text-xs font-bold uppercase text-green-600 dark:text-green-500">Status</span>
-                <p className="font-bold text-sm mt-0.5">Firebase Database Connected</p>
+                <span className="text-xs font-bold uppercase text-green-600 dark:text-green-500">Cloud Status</span>
+                <p className="font-bold text-sm mt-0.5">Firebase Database Connected & Active</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Logged in as {user.email}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Sync Mode: {isCloudSynced ? 'Live Cloud Sync' : 'Offline-First Local Storage Cache'}</p>
               </div>
-              <span className="text-2xl">✅</span>
+              <span className="text-2xl">{isCloudSynced ? '☁️' : '📶'}</span>
+            </div>
+
+            <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] border border-gray-200 dark:border-gray-800 rounded-lg space-y-3">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="font-bold text-sm">Database & Storage Diagnostics</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Semesters: {Object.keys(allSchedules).length} | Total Classes: {Object.values(allSchedules).flat().length} | Tasks: {tasks.length}
+                  </p>
+                </div>
+                <span className="text-xs font-mono bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded">
+                  {Object.values(allSchedules).flat().length === 0 && tasks.length === 0 ? 'Clean State' : 'Has Data'}
+                </span>
+              </div>
+
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={handleClearTestingData}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-2 shadow-sm"
+                >
+                  🗑️ Clear All Testing Data & Reset to Clean Pre-Production
+                </button>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  Wipes test courses and tasks, synchronizes clean empty state to Firebase cloud, and refreshes local offline cache.
+                </p>
+              </div>
             </div>
           </div>
         </div>

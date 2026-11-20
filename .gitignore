@@ -36,6 +36,7 @@ android/app/build/
 android/build/
 *.apk
 *.aab
+release-apk/
 
 # ==============================================================================
 # 3. Dependencies & Web Build Outputs
