@@ -27,11 +27,19 @@ public class AIOAlarmReceiver extends BroadcastReceiver {
         if (pm != null) {
             try {
                 wakeLock = pm.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
                     "aiocalender:exact_alarm_wake"
                 );
-                wakeLock.acquire(15000); // 15 seconds max
-            } catch (Exception ignored) {
+                wakeLock.acquire(6000); // Light up screen for 6 seconds
+            } catch (Exception e1) {
+                try {
+                    wakeLock = pm.newWakeLock(
+                        PowerManager.PARTIAL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                        "aiocalender:exact_alarm_wake"
+                    );
+                    wakeLock.acquire(10000);
+                } catch (Exception ignored) {
+                }
             }
         }
 
