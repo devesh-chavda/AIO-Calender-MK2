@@ -14,8 +14,12 @@
     <meta name="google-signin-client_id" content="20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com" />
     <meta name="google-signin-scope" content="profile email" />
     <script>
-      if (window.location.hostname === 'aio-calander-mk2.vercel.app') {
-        window.location.replace('https://aio-calender-mk2.vercel.app' + window.location.pathname + window.location.search);
+      try {
+        if (typeof window !== 'undefined' && window.location && window.location.hostname === 'aio-calander-mk2.vercel.app') {
+          window.location.replace('https://aio-calender-mk2.vercel.app' + window.location.pathname + window.location.search);
+        }
+      } catch (e) {
+        console.warn('Domain redirect check notice:', e);
       }
     </script>
   </head>

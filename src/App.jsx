@@ -28,7 +28,7 @@ import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 // ==========================================
 export default function App() {
   const [user, setUser] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [loadingAuth, setLoadingAuth] = useState(() => Boolean(auth));
   const [loginError, setLoginError] = useState(null);
 
   useEffect(() => {
@@ -41,7 +41,7 @@ export default function App() {
     let isMounted = true;
 
     // 1. Process redirect result on web (only if redirect was explicitly started)
-    if (!Capacitor.isNativePlatform()) {
+    if (!Capacitor.isNativePlatform() && auth) {
       const isRedirectPending = sessionStorage.getItem('aio_auth_redirect_pending') === 'true';
       getRedirectResult(auth)
         .then((result) => {
@@ -79,22 +79,31 @@ export default function App() {
     }
 
     // 3. Listen to authentication state
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (currentUser) => {
-        if (!isMounted) return;
-        setUser(currentUser);
-        setLoadingAuth(false);
-      },
-      (error) => {
-        if (!isMounted) return;
-        console.warn("Auth state observer notice:", error);
-        setLoadingAuth(false);
-      }
-    );
+    let unsubscribe = () => {};
+    if (auth) {
+      unsubscribe = onAuthStateChanged(
+        auth,
+        (currentUser) => {
+          if (!isMounted) return;
+          setUser(currentUser);
+          setLoadingAuth(false);
+        },
+        (error) => {
+          if (!isMounted) return;
+          console.warn("Auth state observer notice:", error);
+          setLoadingAuth(false);
+        }
+      );
+    }
+
+    // Safety timeout to guarantee auth loader never stays stuck
+    const authTimeout = setTimeout(() => {
+      if (isMounted) setLoadingAuth(false);
+    }, 4000);
 
     return () => {
       isMounted = false;
+      clearTimeout(authTimeout);
       unsubscribe();
     }; 
   }, []);
@@ -102,8 +111,8 @@ export default function App() {
   const handleLogin = async () => {
     setLoginError(null);
     try {
-      if (!firebaseConfig.apiKey) {
-        throw new Error("Firebase API key is not configured. Please supply environment variables (.env).");
+      if (!auth || !firebaseConfig.apiKey) {
+        throw new Error("Firebase authentication is unavailable. Please verify configuration.");
       }
 
       if (Capacitor.isNativePlatform()) {
@@ -448,10 +457,12 @@ function MainDashboard({ user }) {
       }
 
       // 2. Persist to Firestore (persistent cache writes locally first, then syncs to cloud)
-      await setDoc(doc(db, 'users', user.uid), {
-        ...fields,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      if (db) {
+        await setDoc(doc(db, 'users', user.uid), {
+          ...fields,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
     } catch (error) {
       console.error("Firestore save notice:", error);
       setSyncError(error.message);
@@ -637,7 +648,7 @@ function MainDashboard({ user }) {
           <div className="flex items-center gap-3 bg-white dark:bg-[#1a1a20] px-3 py-1.5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
             {user.photoURL && <img src={user.photoURL} alt="Profile" className="w-7 h-7 rounded-full" referrerPolicy="no-referrer" onError={(e) => e.target.style.display='none'} />}
             <span className="text-sm font-bold text-gray-700 dark:text-gray-300 hidden lg:block">{user.displayName}</span>
-            <button onClick={() => signOut(auth)} className="ml-2 text-gray-400 hover:text-red-500 transition-colors cursor-pointer" title="Sign Out">🚪</button>
+            <button onClick={() => { if (auth) signOut(auth); }} className="ml-2 text-gray-400 hover:text-red-500 transition-colors cursor-pointer" title="Sign Out">🚪</button>
           </div>
 
         </div>
