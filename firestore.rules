@@ -1,47 +1,112 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (Firebase Auth UID of the owner)
+    // Fields:
+    //   - schedules: map (optional, max 30 keys, maps semester name to list of class slots)
+    //   - tasks: list (optional, max 500 items, academic tasks and assignments)
+    //   - notifSettings: map (optional, max 20 keys, notification & haptic preferences)
+    //   - email: string (optional, max 254 chars, user email address or empty string)
+    //   - displayName: string (optional, max 100 chars, user display name)
+    //   - photoURL: string (optional, max 2048 chars, profile picture URL or empty string)
+    //   - uid: string (optional, max 128 chars, Firebase Auth UID, must match request.auth.uid)
+    //   - updatedAt: string (optional, max 50 chars, ISO timestamp)
+    //   - createdAt: string (optional, max 50 chars, ISO timestamp)
+    //   - activeSemester: string (optional, max 100 chars)
+    //   - theme: string (optional, max 50 chars)
+    //   - settings: map (optional, max 50 keys)
+    //   - preferences: map (optional, max 50 keys)
+    //   - metadata: map (optional, max 50 keys)
+    //   - status: string (optional, max 50 chars)
+    //   - lastLogin: string (optional, max 50 chars)
+    //   - name: string (optional, max 100 chars)
+    //   - id: string (optional, max 128 chars)
+    //
+    // ===============================================================
+
+    // Deny all reads and writes by default
     match /{document=**} {
       allow read, write: if false;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
 
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    function isSignedIn() {
+    function isAuthenticated() {
       return request.auth != null;
     }
 
+    // Check if authenticated user owns the document path
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+      return isAuthenticated() &&
+             request.auth.uid == userId &&
+             userId is string &&
+             userId.size() > 0 &&
+             userId.size() <= 128;
     }
 
-    function isValidUserWorkspace(data) {
+    // Verify UID hasn't been spoofed on create
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+             (request.resource.data.uid is string && request.resource.data.uid == request.auth.uid);
+    }
+
+    // Ensure uid field cannot be modified on update
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+             !('uid' in resource.data) ||
+             request.resource.data.uid == resource.data.uid;
+    }
+
+    // Validate permitted workspace keys (strict schema enforcement)
+    function hasOnlyAllowedFields(data) {
       return data.keys().hasOnly([
         'schedules', 'tasks', 'notifSettings',
         'email', 'displayName', 'photoURL', 'uid', 'id', 'name',
         'createdAt', 'updatedAt', 'lastLogin',
         'activeSemester', 'theme', 'settings', 'preferences', 'metadata', 'status'
-      ]) &&
-      (!('schedules' in data) || (data.schedules is map && data.schedules.size() <= 30)) &&
-      (!('tasks' in data) || (data.tasks is list && data.tasks.size() <= 500)) &&
-      (!('notifSettings' in data) || (data.notifSettings is map && data.notifSettings.size() <= 20));
+      ]);
     }
 
+    // Domain validator for User Workspace document (applied on BOTH create and update)
+    function isValidUserWorkspace(data) {
+      return hasOnlyAllowedFields(data) &&
+        (!('schedules' in data) || (data.schedules is map && data.schedules.size() <= 30)) &&
+        (!('tasks' in data) || (data.tasks is list && data.tasks.size() <= 500)) &&
+        (!('notifSettings' in data) || (data.notifSettings is map && data.notifSettings.size() <= 20)) &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 254)) &&
+        (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2048)) &&
+        (!('uid' in data) || (data.uid is string && data.uid.size() <= 128 && data.uid == request.auth.uid)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+        (!('activeSemester' in data) || (data.activeSemester is string && data.activeSemester.size() <= 100)) &&
+        (!('theme' in data) || (data.theme is string && data.theme.size() <= 50)) &&
+        (!('status' in data) || (data.status is string && data.status.size() <= 50)) &&
+        (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('lastLogin' in data) || (data.lastLogin is string && data.lastLogin.size() <= 50)) &&
+        (!('settings' in data) || (data.settings is map && data.settings.size() <= 50)) &&
+        (!('preferences' in data) || (data.preferences is map && data.preferences.size() <= 50)) &&
+        (!('metadata' in data) || (data.metadata is map && data.metadata.size() <= 50));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
     match /users/{userId} {
-      allow read: if isOwner(userId) && isValidId(userId);
-      allow create: if isOwner(userId) && isValidId(userId) && isValidUserWorkspace(incoming());
-      allow update: if isOwner(userId) && isValidId(userId) && isValidUserWorkspace(incoming());
-      allow delete: if isOwner(userId) && isValidId(userId);
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && uidUnchanged() && isValidUserWorkspace(request.resource.data);
+      allow update: if isOwner(userId) && uidNotModified() && isValidUserWorkspace(request.resource.data);
+      allow delete: if isOwner(userId);
     }
   }
 }
