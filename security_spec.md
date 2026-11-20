@@ -1,4 +1,4 @@
-# Security Specification — AIO Calendar Mk2
+# Security Specification — AIO Calender MK2
 
 ## 1. Data Invariants
 - Every user workspace document at `/users/{userId}` can only be read, created, updated, or deleted by the authenticated user whose `request.auth.uid == userId`.

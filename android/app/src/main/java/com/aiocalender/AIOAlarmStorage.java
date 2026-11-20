@@ -39,7 +39,7 @@ public class AIOAlarmStorage {
             if (obj == null) return null;
             AlarmEntry entry = new AlarmEntry();
             entry.id = obj.optInt("id", 0);
-            entry.title = obj.optString("title", "AIO Calendar Reminder");
+            entry.title = obj.optString("title", "AIO Calender Reminder");
             entry.body = obj.optString("body", "");
             entry.triggerTimeMs = obj.optLong("triggerTimeMs", 0);
             entry.vibrate = obj.optBoolean("vibrate", true);

@@ -84,7 +84,7 @@ public class AIOAlarmPlugin extends Plugin {
         AIOAlarmStorage.AlarmEntry entry = new AIOAlarmStorage.AlarmEntry();
         entry.id = 99999;
         entry.title = vibrate ? "🔔 Lecture Alert (Vibrate ON)" : "🤫 Lecture Alert (Silent Mode)";
-        entry.body = "AIO Calendar Mk2 alarm clock triggered successfully! This bypasses Doze & power-saving modes.";
+        entry.body = "AIO Calender MK2 alarm clock triggered successfully! This bypasses Doze & power-saving modes.";
         entry.triggerTimeMs = System.currentTimeMillis() + 5000;
         entry.vibrate = vibrate;
         entry.category = "Test";

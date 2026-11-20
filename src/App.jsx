@@ -459,48 +459,6 @@ function MainDashboard({ user }) {
     }
   };
 
-  const handleClearTestingData = async () => {
-    if (!window.confirm("Are you sure you want to clear all test schedule and task data? This will reset your database to a fresh pre-production state.")) {
-      return;
-    }
-    try {
-      const cleanSchedules = { 'Monsoon 2026': [] };
-      const cleanTasks = [];
-      const cleanNotifs = DEFAULT_NOTIF_SETTINGS;
-
-      setAllSchedules(cleanSchedules);
-      setTasks(cleanTasks);
-      setNotifSettings(cleanNotifs);
-      setActiveSemester('Monsoon 2026');
-
-      try {
-        localStorage.removeItem('aio-cached-schedules');
-        localStorage.removeItem('aio-cached-tasks');
-        localStorage.removeItem('aio-cached-notif-settings');
-        localStorage.setItem('aio-active-sem', 'Monsoon 2026');
-      } catch (e) {
-        console.debug(e);
-      }
-
-      await setDoc(doc(db, 'users', user.uid), {
-        email: user.email || '',
-        displayName: user.displayName || '',
-        photoURL: user.photoURL || '',
-        uid: user.uid,
-        schedules: cleanSchedules,
-        tasks: cleanTasks,
-        notifSettings: cleanNotifs,
-        updatedAt: new Date().toISOString()
-      });
-
-      setTestAlertFeedback("Testing data cleared successfully! Database is now in a clean pre-production state.");
-      setTimeout(() => setTestAlertFeedback(null), 7000);
-    } catch (err) {
-      console.error("Failed to clear testing data:", err);
-      setSyncError("Failed to clear testing data: " + err.message);
-    }
-  };
-
   const handleAddClass = async (e) => {
     e.preventDefault();
     if (!newClass.courseName || !newClass.startTime || !newClass.endTime) return; 
@@ -1279,44 +1237,16 @@ function MainDashboard({ user }) {
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800 space-y-4">
-            <h2 className="text-xl font-semibold mb-1">Account, Cloud & Pre-Production</h2>
-            
-            <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-lg flex justify-between items-center">
+          <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800">
+            <h2 className="text-xl font-semibold mb-1">Account & Sync</h2>
+            <div className="p-4 mt-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-lg flex justify-between items-center">
               <div>
-                <span className="text-xs font-bold uppercase text-green-600 dark:text-green-500">Cloud Status</span>
-                <p className="font-bold text-sm mt-0.5">Firebase Database Connected & Active</p>
+                <span className="text-xs font-bold uppercase text-green-600 dark:text-green-500">Status</span>
+                <p className="font-bold text-sm mt-0.5">Firebase Database Connected</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Logged in as {user.email}</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Sync Mode: {isCloudSynced ? 'Live Cloud Sync' : 'Offline-First Local Storage Cache'}</p>
               </div>
-              <span className="text-2xl">{isCloudSynced ? '☁️' : '📶'}</span>
-            </div>
-
-            <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] border border-gray-200 dark:border-gray-800 rounded-lg space-y-3">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-bold text-sm">Database & Storage Diagnostics</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Semesters: {Object.keys(allSchedules).length} | Total Classes: {Object.values(allSchedules).flat().length} | Tasks: {tasks.length}
-                  </p>
-                </div>
-                <span className="text-xs font-mono bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded">
-                  {Object.values(allSchedules).flat().length === 0 && tasks.length === 0 ? 'Clean State' : 'Has Data'}
-                </span>
-              </div>
-
-              <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
-                <button
-                  type="button"
-                  onClick={handleClearTestingData}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-2 shadow-sm"
-                >
-                  🗑️ Clear All Testing Data & Reset to Clean Pre-Production
-                </button>
-                <p className="text-[11px] text-gray-400 mt-1.5">
-                  Wipes test courses and tasks, synchronizes clean empty state to Firebase cloud, and refreshes local offline cache.
-                </p>
-              </div>
+              <span className="text-2xl">{isCloudSynced ? '☁️' : '✅'}</span>
             </div>
           </div>
         </div>
