@@ -20,6 +20,8 @@ firebase-applet-config.json
 # Android/iOS Signing Keys & Keystores
 *.jks
 *.keystore
+keystore.properties
+**/keystore.properties
 *.p8
 *.p12
 *.mobileprovision
