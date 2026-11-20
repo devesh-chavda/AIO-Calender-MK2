@@ -6,7 +6,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8.2-646CFF?logo=vite)](https://vitejs.dev/)
 [![Capacitor](https://img.shields.io/badge/Capacitor-8.5-119EFF?logo=capacitor)](https://capacitorjs.com/)
 [![Firebase](https://img.shields.io/badge/Firebase-v12-FFCA28?logo=firebase)](https://firebase.google.com/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](#license)
 
 > **AIO Calender MK2** is the second-generation, production-grade academic management platform built for modern university students and educators. Combining a lightning-fast responsive web client with a native Android exact-alarm engine, MK2 ensures you never miss a lecture, lab session, or assignment deadline.
 
@@ -262,4 +262,4 @@ git bundle create aio-calender-mk2-backup-v2.0.bundle --all
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. Copyright (c) 2026 Devesh Chavda.

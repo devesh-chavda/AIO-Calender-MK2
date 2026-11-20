@@ -1,0 +1,33 @@
+# ==============================================================================
+# Vercel Deployment Ignore Rules - AIO Calender MK2
+# Prevents sensitive local artifacts, native Android code, and archives
+# from ever being uploaded or exposed to Vercel builds.
+# ==============================================================================
+
+# Native Android source, builds, keystores & APKs
+android/
+*.apk
+*.aab
+release-apk/
+
+# Local backups, bundles & recovery archives
+*.bundle
+*.zip
+*.tar
+*.tar.gz
+backups/
+backup/
+aio-calender-mk2-backup*
+
+# Local environment & secrets
+.env
+.env.*
+firebase-applet-config.json
+*keystore*
+*serviceAccountKey*.json
+
+# Internal scripts & test files
+scripts/
+.github/
+*.test.ts
+firestore.rules.test.ts
