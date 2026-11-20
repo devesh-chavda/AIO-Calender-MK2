@@ -4,7 +4,7 @@ android {
     namespace = "com.aiocalender"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.aiocalender"
+        applicationId "com.aiocalendermk2"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
