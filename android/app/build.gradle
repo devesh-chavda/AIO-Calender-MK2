@@ -18,7 +18,7 @@ android {
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig = signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -26,8 +26,12 @@ android {
 }
 
 repositories {
-    flatDir{
-        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    def cordovaLibs = file('../capacitor-cordova-android-plugins/src/main/libs')
+    def appLibs = file('libs')
+    if (cordovaLibs.exists() || appLibs.exists()) {
+        flatDir {
+            dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+        }
     }
 }
 

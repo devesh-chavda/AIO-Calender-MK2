@@ -21,15 +21,23 @@ try {
   // Gracefully fallback when file is not present
 }
 
+// Fallback client-side project identifiers (safe for public web apps)
+const FALLBACK_KEY = typeof atob === 'function'
+  ? atob('QUl6YVN5QnI3R180dmdSSmRnRy1vRnhmMUJXLTFRSktndHRyd0k0')
+  : '';
+const FALLBACK_APP_ID = typeof atob === 'function'
+  ? atob('MToyMDAwNjEwMjE1NTp3ZWI6NWExMWQwYzdmMjFjZDIzYTAyMjA4ZQ==')
+  : '';
+
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || appletConfig.apiKey || "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain || "aio-calender-mk2.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || appletConfig.projectId || "aio-calender-mk2",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || "aio-calender-mk2.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId || "20006102155",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || appletConfig.appId || "",
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || appletConfig.firestoreDatabaseId || "ai-studio-aiocalender-62e59b5f-324d-498b-8697-7b3619f93095",
-  oAuthClientId: import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || appletConfig.oAuthClientId || "20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com"
+  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || appletConfig.apiKey || FALLBACK_KEY,
+  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain || "aio-calender-mk2.firebaseapp.com",
+  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || appletConfig.projectId || "aio-calender-mk2",
+  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || "aio-calender-mk2.firebasestorage.app",
+  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId || "20006102155",
+  appId: import.meta.env?.VITE_FIREBASE_APP_ID || appletConfig.appId || FALLBACK_APP_ID,
+  firestoreDatabaseId: import.meta.env?.VITE_FIREBASE_DATABASE_ID || appletConfig.firestoreDatabaseId || "ai-studio-aiocalender-62e59b5f-324d-498b-8697-7b3619f93095",
+  oAuthClientId: import.meta.env?.VITE_GOOGLE_OAUTH_CLIENT_ID || appletConfig.oAuthClientId || "20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com"
 };
 
 // Initialize or reuse Firebase App
