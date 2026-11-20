@@ -18,3 +18,13 @@
 ## 4. Brand Naming & Domain Invariant
 - **Naming Convention**: The project branding is strictly "AIO Calender MK2" (spelled "Calender" with an E).
 - **Domains**: Primary domain is `aio-calender-mk2.vercel.app` (with an E). Secondary domain is `aio-calander-mk2.vercel.app` (with an A) redirecting to the primary.
+
+## 5. Universal Android Compatibility & Alarm Architecture
+- **Version Span**: Maintain support from Android 7.0 (API 24, `minSdkVersion 24`) up through Android 16/17+ (API 36+).
+- **Zero-Battery-Drain Alarms**: Always use `AlarmManager.setAlarmClock()` registered in Linux kernel RTC hardware for notifications. Never introduce heavy background polling daemons or persistent background services.
+- **Direct-Boot Safe**: Always store alarm schedules in `createDeviceProtectedStorageContext()` to prevent credential encrypted storage crashes on locked boot (`ACTION_LOCKED_BOOT_COMPLETED`).
+- **Lock-Screen Visibility**: Preserve `showWhenLocked`, `turnScreenOn`, and `USE_FULL_SCREEN_INTENT` so alarms can wake the display and show heads-up notifications across all OEM brands (Samsung One UI, Xiaomi, Pixel, etc.).
+
+## 6. Milestone Backup & Point of Return
+- **Tagged Releases**: Create annotated Git tags (`git tag -a`) for verified milestones.
+- **Local Recovery**: Maintain git-ignored backup bundles/archives as reliable points of return before major codebase refactors.
