@@ -450,7 +450,7 @@ export async function scheduleTestNotification(vibrateEnabled) {
       if (perm === 'granted') {
         setTimeout(() => {
           new Notification(
-            wantsVibration ? 'AIO Calendar: Vibration ON 📳' : 'AIO Calendar: Silent Mode 🤫',
+            wantsVibration ? 'AIO Calender MK2: Vibration ON 📳' : 'AIO Calender MK2: Silent Mode 🤫',
             { body: 'Test notification delivered successfully!' }
           );
         }, 5000);
@@ -474,7 +474,7 @@ export async function scheduleTestNotification(vibrateEnabled) {
         {
           id: 99999,
           title: wantsVibration ? 'Vibration ON! 📳' : 'Silent Mode ON! 🤫',
-          body: 'AIO Calendar Mk2 alarm is working properly.',
+          body: 'AIO Calender MK2 alarm is working properly.',
           channelId: activeChannel,
           schedule: {
             at: new Date(Date.now() + 5000),

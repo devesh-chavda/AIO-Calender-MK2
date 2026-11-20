@@ -175,8 +175,8 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex flex-col items-center justify-center p-4 transition-colors">
         <div className="bg-white dark:bg-[#121215] p-8 md:p-12 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 text-center max-w-md w-full">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-red-500 dark:to-purple-600 mb-2">
-            AIO Calender
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 dark:from-red-500 dark:via-purple-500 dark:to-indigo-400 mb-2 select-none">
+            AIO Calender MK2
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mb-8 font-medium">Sign in to sync your schedule across all devices.</p>
           {!firebaseConfig.apiKey && (
@@ -548,12 +548,12 @@ function MainDashboard({ user }) {
       {/* Top Header */}
       <header className="mb-6 flex flex-col xl:flex-row justify-between xl:items-center gap-4 shrink-0 border-b border-gray-200 dark:border-gray-800/80 pb-4">
         <div className="flex justify-between items-center w-full xl:w-auto">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-red-500 dark:to-purple-600">
-              AIO Calender
+          <div className="flex items-center gap-2">
+            <h1 className="text-[1.4rem] xs:text-[1.65rem] sm:text-3xl font-black tracking-tight whitespace-nowrap select-none text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 dark:from-red-500 dark:via-purple-500 dark:to-indigo-400">
+              AIO Calender MK2
             </h1>
           </div>
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-800 text-lg">
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-800 text-lg hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors shadow-sm">
             {isDarkMode ? '🌞' : '🌙'}
           </button>
         </div>
@@ -1199,7 +1199,7 @@ function MainDashboard({ user }) {
       )} {/* <-- This correctly closes the Settings Tab! */}
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-2 z-50 flex justify-around">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] z-50 flex justify-around">
         <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center py-1 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === 'dashboard' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
           <span className="text-lg">📊</span>
           Dashboard
