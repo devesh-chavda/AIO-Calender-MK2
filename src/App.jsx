@@ -1,0 +1,1166 @@
+import { useState, useEffect } from 'react';
+import { auth, googleProvider, db, firebaseConfig, handleFirestoreError, OperationType } from './firebase';
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
+  signOut, 
+  signInWithCredential, 
+  GoogleAuthProvider 
+} from 'firebase/auth';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import {
+  setupNotifications,
+  syncAllAlarms,
+  scheduleTestNotification,
+  getNotificationStatus,
+  openExactAlarmSettings,
+  requestIgnoreBatteryOptimization,
+  openBatterySettings,
+  openAutostartSettings
+} from "./notifications";
+import { Capacitor } from '@capacitor/core';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+
+// ==========================================
+// 1. AUTHENTICATION WRAPPER
+// ==========================================
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [loginError, setLoginError] = useState(null);
+
+  useEffect(() => {
+    if (localStorage.getItem('aio-theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+  }, []);
+
+  useEffect(() => {
+    // 1. Process redirect result on web (if user was redirected)
+    if (!Capacitor.isNativePlatform()) {
+      getRedirectResult(auth)
+        .then((result) => {
+          if (result?.user) {
+            setUser(result.user);
+          }
+        })
+        .catch((error) => {
+          console.error("Redirect sign-in error:", error);
+          setLoginError(error.message || "Failed to complete redirect sign-in.");
+        });
+    }
+
+    // 2. Initialize native GoogleAuth on mobile
+    if (Capacitor.isNativePlatform()) {
+      GoogleAuth.initialize({
+        clientId: firebaseConfig.oAuthClientId,
+        scopes: ['profile', 'email'],
+        grantOfflineAccess: false,
+      }).catch((err) => {
+        console.warn("Native GoogleAuth init warning on mount:", err);
+      });
+    }
+
+    // 3. Listen to authentication state
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (currentUser) => {
+        setUser(currentUser);
+        setLoadingAuth(false);
+      },
+      (error) => {
+        console.error("Auth state change error:", error);
+        setLoginError(error.message || "Failed to restore authentication session.");
+        setLoadingAuth(false);
+      }
+    );
+
+    return () => unsubscribe(); 
+  }, []);
+
+  const handleLogin = async () => {
+    setLoginError(null);
+    try {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await GoogleAuth.initialize({
+            clientId: firebaseConfig.oAuthClientId,
+            scopes: ['profile', 'email'],
+            grantOfflineAccess: false,
+          });
+        } catch {
+          // Plugin already initialized
+        }
+
+        const googleUser = await GoogleAuth.signIn();
+        const idToken = googleUser?.authentication?.idToken || googleUser?.idToken;
+        if (!idToken) {
+          throw new Error("Unable to obtain Google ID token. Please try again.");
+        }
+        const credential = GoogleAuthProvider.credential(idToken);
+        await signInWithCredential(auth, credential);
+      } else {
+        // Web / Vercel / AI Studio: Popup with redirect fallback
+        try {
+          await signInWithPopup(auth, googleProvider);
+        } catch (popupErr) {
+          if (
+            popupErr.code === 'auth/popup-blocked' ||
+            popupErr.code === 'auth/cancelled-popup-request' ||
+            popupErr.code === 'auth/operation-not-supported-in-this-environment'
+          ) {
+            console.warn("Sign-in popup blocked or unsupported, falling back to redirect...");
+            await signInWithRedirect(auth, googleProvider);
+          } else if (popupErr.code === 'auth/popup-closed-by-user') {
+            console.log("User closed sign-in popup.");
+          } else {
+            throw popupErr;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Login Error:", error);
+      setLoginError(error.message || JSON.stringify(error));
+    }
+  };
+
+  if (loadingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex items-center justify-center">
+        <p className="font-bold text-gray-500">Loading Auth...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex flex-col items-center justify-center p-4 transition-colors">
+        <div className="bg-white dark:bg-[#121215] p-8 md:p-12 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 text-center max-w-md w-full">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-red-500 dark:to-purple-600 mb-2">
+            AIO Calender
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 mb-8 font-medium">Sign in to sync your schedule across all devices.</p>
+          {loginError && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 text-xs text-left break-words">
+              Login Failed: {loginError}
+            </div>
+          )}
+          <button 
+            onClick={handleLogin}
+            className="w-full flex items-center justify-center gap-3 bg-white dark:bg-[#1a1a20] border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#25252b] text-gray-800 dark:text-gray-200 py-3.5 px-4 rounded-xl font-bold transition-all shadow-sm cursor-pointer">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" className="w-5 h-5" />
+            Continue with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <MainDashboard user={user} />;
+}
+
+
+// ==========================================
+// 2. MAIN APPLICATION DASHBOARD
+// ==========================================
+function MainDashboard({ user }) {
+  // ----------------------------------------
+  // ALL HOOKS MUST BE AT THE TOP
+  // ----------------------------------------
+  
+  // UI State
+  const [gridContentType, setGridContentType] = useState('Lectures'); // New Toggle State
+  const [activeTab, setActiveTab] = useState('dashboard'); 
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('aio-theme') === 'dark');
+  const [activeView, setActiveView] = useState('list'); 
+  const [activeSemester, setActiveSemester] = useState(() => localStorage.getItem('aio-active-sem') || 'Monsoon 2026');
+  const [viewFilter, setViewFilter] = useState('Today'); 
+  
+  // Date/Grid Configuration Constants (Moved up for safe access)
+  const startHour = 8; 
+  const endHour = 20;  
+  const totalMinutes = (endHour - startHour) * 60;
+  const hoursArray = Array.from({ length: endHour - startHour + 1 }, (_, i) => i + startHour);
+
+  const initialDayStr = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const dayValues = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 7 };
+  const [activeGridDay, setActiveGridDay] = useState(ALL_DAYS.includes(initialDayStr) ? initialDayStr : 'Monday');
+
+  // Dynamic array: hides Sunday for lectures, shows it for tasks
+  const displayDays = gridContentType === 'Lectures' 
+    ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] 
+    : ALL_DAYS;
+
+  // Helper to position a task on the grid based on time
+  const getTaskStyle = (time) => {
+    if (!time) return { top: '0%', height: '40px' };
+    const [h, m] = time.split(':').map(Number);
+    let topMinutes = (h - startHour) * 60 + m;
+    
+    // Keep tasks inside the visible grid even if they are due at 11:59 PM
+    if (topMinutes > totalMinutes - 40) topMinutes = totalMinutes - 40;
+    if (topMinutes < 0) topMinutes = 0;
+
+    return {
+      top: `${(topMinutes / totalMinutes) * 100}%`,
+      height: '45px',
+    };
+  };
+
+  // Cloud Data State
+  const [allSchedules, setAllSchedules] = useState(null);
+  const [tasks, setTasks] = useState(null);
+  const [notifSettings, setNotifSettings] = useState(null);
+  const [syncError, setSyncError] = useState(() => (!db ? "Firebase 'db' is not initialized." : null));
+
+  // Form State
+  const [newClass, setNewClass] = useState({
+    day: 'Monday', courseCode: '', courseName: '', section: '', startTime: '', endTime: '', building: '', room: ''
+  });
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [newTask, setNewTask] = useState({ title: '', due: '', time: '', location: '', type: 'Assignment' });
+
+  // Live Time Engine
+  const [currentTime, setCurrentTime] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const current24HourTime = currentTime.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+  const currentDayStr = currentTime.toLocaleDateString('en-US', { weekday: 'long' });
+
+  // Theme Sync
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('aio-theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('aio-theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  // Semester Preference Sync
+  useEffect(() => {
+    if (activeSemester) localStorage.setItem('aio-active-sem', activeSemester);
+  }, [activeSemester]);
+
+  // Notification Diagnostics State
+  const [scheduledAlarms, setScheduledAlarms] = useState([]);
+  const [notifStatus, setNotifStatus] = useState({
+    isNative: false,
+    displayPermission: 'default',
+    exactAlarmStatus: 'granted',
+    isBatteryIgnored: true,
+    manufacturer: '',
+    model: ''
+  });
+  const [testAlertFeedback, setTestAlertFeedback] = useState(null);
+
+  const refreshDiagnostics = () => {
+    getNotificationStatus().then((status) => {
+      setNotifStatus(status);
+    });
+  };
+
+  // 1. Set up the Android Notification Channels & Diagnostics
+  useEffect(() => {
+    let active = true;
+    setupNotifications().then(() => {
+      if (active) {
+        refreshDiagnostics();
+      }
+    });
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshDiagnostics();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      active = false;
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  // 2. Monitor Firebase data to rebuild the alarms dynamically
+  useEffect(() => {
+    let active = true;
+    if (allSchedules && tasks && notifSettings) {
+      const currentClasses = allSchedules[activeSemester] || [];
+      syncAllAlarms(currentClasses, tasks, notifSettings).then((alarms) => {
+        if (active && Array.isArray(alarms)) {
+          setScheduledAlarms(alarms);
+        }
+      });
+    }
+    return () => { active = false; };
+  }, [allSchedules, tasks, activeSemester, notifSettings]);
+
+  // ----------------------------------------
+  // FIREBASE REAL-TIME SYNC LISTENER
+  // ----------------------------------------
+  const userDocPath = `users/${user.uid}`;
+  const [showNewSemInput, setShowNewSemInput] = useState(false);
+  const [newSemName, setNewSemName] = useState('');
+
+  useEffect(() => {
+    if (!db) return;
+    const defaultNotifs = { classNotifs: true, classLeadTime: '10', taskNotifs: true, taskLeadTime: '60', taskRepeatFrequency: 'daily', vibrateEnabled: true };
+    const userRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setAllSchedules(data.schedules || { 'Monsoon 2026': [] });
+        setTasks(data.tasks || []);
+        setNotifSettings(data.notifSettings || defaultNotifs);
+      } else {
+        setDoc(userRef, {
+          schedules: { 'Monsoon 2026': [] },
+          tasks: [],
+          notifSettings: defaultNotifs
+        }, { merge: true }).catch(err => {
+          setSyncError(err.message);
+          handleFirestoreError(err, OperationType.WRITE, userDocPath);
+        });
+      }
+    }, (error) => {
+      setSyncError(error.message);
+      handleFirestoreError(error, OperationType.GET, userDocPath);
+    });
+    return () => unsubscribe();
+  }, [user.uid, userDocPath]);
+
+  // ----------------------------------------
+  // CLOUD WRITE FUNCTIONS
+  // ----------------------------------------
+  const saveUserFields = async (fields) => {
+    try {
+      await setDoc(doc(db, 'users', user.uid), fields, { merge: true });
+    } catch (error) {
+      setSyncError(error.message);
+      handleFirestoreError(error, OperationType.WRITE, userDocPath);
+    }
+  };
+
+  const handleAddClass = async (e) => {
+    e.preventDefault();
+    if (!newClass.courseName || !newClass.startTime || !newClass.endTime) return; 
+    const classEntry = { id: Date.now(), ...newClass };
+    const currentClasses = allSchedules[activeSemester] || [];
+    const updatedSchedules = { ...allSchedules, [activeSemester]: [...currentClasses, classEntry] };
+    await saveUserFields({ schedules: updatedSchedules });
+    setNewClass({ day: 'Monday', courseCode: '', courseName: '', section: '', startTime: '', endTime: '', building: '', room: '' });
+  };
+
+  const handleDeleteClass = async (id) => {
+    const currentClasses = allSchedules[activeSemester] || [];
+    const updatedSchedules = { ...allSchedules, [activeSemester]: currentClasses.filter(c => c.id !== id) };
+    await saveUserFields({ schedules: updatedSchedules });
+  };
+
+  const handleSemesterChange = (e) => {
+    const selected = e.target.value;
+    if (selected === 'NEW') {
+      setShowNewSemInput(true);
+    } else {
+      setShowNewSemInput(false);
+      setActiveSemester(selected);
+    }
+  };
+
+  const handleCreateSemester = async (e) => {
+    e.preventDefault();
+    const trimmed = newSemName.trim();
+    if (trimmed && !allSchedules[trimmed]) {
+      const updatedSchedules = { ...allSchedules, [trimmed]: [] };
+      await saveUserFields({ schedules: updatedSchedules });
+      setActiveSemester(trimmed);
+    }
+    setNewSemName('');
+    setShowNewSemInput(false);
+  };
+
+  const handleAddTask = async (e) => {
+    e.preventDefault();
+    if (!newTask.title) return;
+    const updatedTasks = [...tasks, { id: Date.now(), ...newTask, completed: false }];
+    await saveUserFields({ tasks: updatedTasks });
+    setNewTask({ title: '', due: '', time: '', location: '', type: 'Assignment' });
+    setShowTaskForm(false);
+  };
+
+  const handleDeleteTask = async (id) => {
+    const updatedTasks = tasks.filter(t => t.id !== id);
+    await saveUserFields({ tasks: updatedTasks });
+  };
+
+  const toggleTaskCompletion = async (id) => {
+    const updatedTasks = tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+    await saveUserFields({ tasks: updatedTasks });
+  };
+
+  const handleNotifSettingsChange = async (key, value) => {
+    const updatedSettings = { ...notifSettings, [key]: value };
+    await saveUserFields({ notifSettings: updatedSettings });
+  };
+
+  // ----------------------------------------
+  // EARLY RETURNS & LOADING SCREENS
+  // ----------------------------------------
+  if (syncError) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-[#121215] p-6 rounded-xl shadow-sm border border-red-500 text-center max-w-md w-full">
+          <span className="text-4xl mb-4 block">🚨</span>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-red-400 mb-2">Database Connection Failed</h2>
+          <p className="text-red-600 dark:text-red-300 font-mono text-xs bg-red-50 dark:bg-red-950/30 p-3 rounded mb-4 overflow-auto break-words text-left">
+            {syncError}
+          </p>
+          <button onClick={() => { signOut(auth); window.location.reload(); }} className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg w-full">Sign Out & Try Again</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!allSchedules || !tasks || !notifSettings) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex items-center justify-center">
+        <p className="font-bold text-blue-600 dark:text-red-400 animate-pulse text-lg">Syncing with Cloud...</p>
+      </div>
+    );
+  }
+
+  // ----------------------------------------
+  // MAIN UI RENDER LOGIC
+  // ----------------------------------------
+  const semesters = Object.keys(allSchedules);
+  const currentClasses = allSchedules[activeSemester] || [];
+  
+  const sortedClasses = [...currentClasses].sort((a, b) => {
+    if (dayValues[a.day] !== dayValues[b.day]) return dayValues[a.day] - dayValues[b.day];
+    return a.startTime.localeCompare(b.startTime); 
+  });
+  const displayedClasses = viewFilter === 'Today' ? sortedClasses.filter(c => c.day === currentDayStr) : sortedClasses;
+
+  const getClassStatus = (lecture) => {
+    if (lecture.day !== currentDayStr) return 'upcoming'; 
+    if (current24HourTime >= lecture.startTime && current24HourTime <= lecture.endTime) return 'ongoing';
+    if (current24HourTime > lecture.endTime) return 'past';
+    return 'upcoming';
+  };
+
+  const format12Hour = (time24) => {
+    if (!time24) return '';
+    const [h, m] = time24.split(':');
+    const hours = parseInt(h, 10);
+    const suffix = hours >= 12 ? 'PM' : 'AM';
+    return `${hours % 12 || 12}:${m} ${suffix}`;
+  };
+
+  const getEventStyle = (startTime, endTime) => {
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    const topMinutes = (startH - startHour) * 60 + startM;
+    const durationMinutes = (endH * 60 + endM) - (startH * 60 + startM);
+    return {
+      top: `${(topMinutes / totalMinutes) * 100}%`,
+      height: `${(durationMinutes / totalMinutes) * 100}%`
+    };
+  };
+
+  const eventColors = [
+    'bg-blue-100 border-blue-500 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-600',
+    'bg-green-100 border-green-500 text-green-800 dark:bg-green-900/30 dark:text-green-300 dark:border-green-600',
+    'bg-yellow-100 border-yellow-500 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-600',
+    'bg-purple-100 border-purple-500 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-600',
+    'bg-pink-100 border-pink-500 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300 dark:border-pink-600',
+    'bg-orange-100 border-orange-500 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-600',
+  ];
+
+  const getEventColor = (courseCode) => {
+    if (!courseCode) return eventColors[0];
+    const sum = courseCode.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return eventColors[sum % eventColors.length];
+  };
+
+  return (
+    <div className="min-h-screen transition-colors duration-300 bg-gray-50 dark:bg-[#0a0a0c] text-gray-800 dark:text-gray-200 font-sans p-4 md:p-8 pb-24 md:pb-8 flex flex-col">
+      
+      {/* Top Header */}
+      <header className="mb-6 flex flex-col xl:flex-row justify-between xl:items-center gap-4 shrink-0 border-b border-gray-200 dark:border-gray-800/80 pb-4">
+        <div className="flex justify-between items-center w-full xl:w-auto">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-red-500 dark:to-purple-600">
+              AIO Calender
+            </h1>
+          </div>
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-800 text-lg">
+            {isDarkMode ? '🌞' : '🌙'}
+          </button>
+        </div>
+
+        {/* Desktop Navigation Tabs */}
+        <nav className="hidden md:flex items-center gap-2 bg-gray-200 dark:bg-[#1a1a20] p-1.5 rounded-xl border border-gray-300 dark:border-gray-800">
+          <button 
+            onClick={() => setActiveTab('dashboard')} 
+            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-red-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}>
+            📊 Dashboard
+          </button>
+          <button 
+            onClick={() => setActiveTab('schedule')} 
+            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center gap-2 ${activeTab === 'schedule' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-red-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}>
+            ✏️ Schedule Manager
+          </button>
+          <button 
+            onClick={() => setActiveTab('settings')} 
+            className={`px-5 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center gap-2 ${activeTab === 'settings' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-red-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}>
+            ⚙️ Settings & Notifs
+          </button>
+        </nav>
+
+        {/* Status Bar & Google Account Profile (REORDERED) */}
+        <div className="hidden md:flex items-center gap-4">
+          
+          {/* 1. Time Display */}
+          <div className="flex items-center gap-3 bg-white dark:bg-[#1a1a20] px-4 py-2 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
+            <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">{currentDayStr}</span>
+            <span className="text-lg font-bold text-blue-600 dark:text-red-500 tracking-wider">{current24HourTime}</span>
+          </div>
+
+          {/* 2. Theme Toggle (Moved to the middle) */}
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 px-4 rounded-lg bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors shadow-inner font-medium cursor-pointer flex-shrink-0">
+            {isDarkMode ? '🌞' : '🌙'}
+          </button>
+
+          {/* 3. User Profile & Logout (Moved to the extreme right) */}
+          <div className="flex items-center gap-3 bg-white dark:bg-[#1a1a20] px-3 py-1.5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
+            {user.photoURL && <img src={user.photoURL} alt="Profile" className="w-7 h-7 rounded-full" referrerPolicy="no-referrer" onError={(e) => e.target.style.display='none'} />}
+            <span className="text-sm font-bold text-gray-700 dark:text-gray-300 hidden lg:block">{user.displayName}</span>
+            <button onClick={() => signOut(auth)} className="ml-2 text-gray-400 hover:text-red-500 transition-colors cursor-pointer" title="Sign Out">🚪</button>
+          </div>
+
+        </div>
+      </header>
+
+      {/* TAB 1: DASHBOARD */}
+      {activeTab === 'dashboard' && (
+        <div className="flex-1 flex flex-col space-y-6 animate-in fade-in duration-300">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-[#121215] p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-sm">
+            {/* Left: Active Term (Order 1 on both) */}
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto order-1">
+              <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">Active Term:</span>
+              <select value={showNewSemInput ? 'NEW' : activeSemester} onChange={handleSemesterChange} className="w-full sm:w-auto text-sm bg-gray-100 dark:bg-[#1a1a20] text-gray-800 dark:text-gray-200 rounded-md px-3 py-1.5 font-bold border border-gray-200 dark:border-gray-700 outline-none cursor-pointer">
+                {semesters.map(sem => <option key={sem} value={sem}>{sem}</option>)}
+                <option value="NEW">+ New Semester</option>
+              </select>
+              {showNewSemInput && (
+                <form onSubmit={handleCreateSemester} className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    placeholder="e.g., Winter 2027"
+                    value={newSemName}
+                    onChange={(e) => setNewSemName(e.target.value)}
+                    className="text-sm bg-white dark:bg-[#1a1a20] text-gray-800 dark:text-gray-200 rounded-md px-2.5 py-1 border border-gray-300 dark:border-gray-700 outline-none"
+                    autoFocus
+                  />
+                  <button type="submit" className="text-xs font-bold bg-blue-600 dark:bg-red-600 text-white px-3 py-1.5 rounded-md cursor-pointer">Add</button>
+                  <button type="button" onClick={() => setShowNewSemInput(false)} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-1.5 cursor-pointer">✕</button>
+                </form>
+              )}
+            </div>
+
+            {/* Middle: Lectures vs Tasks Toggle (Order 3 on mobile, Order 2 on laptop) */}
+            {activeView === 'calendar' && (
+              <div className="flex bg-gray-100 dark:bg-[#1a1a20] p-1 rounded-lg border border-gray-200 dark:border-gray-800 w-full md:w-auto self-stretch order-3 md:order-2">
+                <button onClick={() => setGridContentType('Lectures')} className={`flex-1 md:flex-none px-6 py-1.5 rounded-md text-xs font-bold transition-all ${gridContentType === 'Lectures' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-red-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                  📚 Lectures
+                </button>
+                <button onClick={() => setGridContentType('Tasks')} className={`flex-1 md:flex-none px-6 py-1.5 rounded-md text-xs font-bold transition-all ${gridContentType === 'Tasks' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-purple-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                  🎯 Tasks
+                </button>
+              </div>
+            )}
+
+            {/* Right: List View vs Calendar Grid (Order 2 on mobile, Order 3 on laptop) */}
+            <div className="flex bg-gray-100 dark:bg-[#1a1a20] p-1 rounded-lg border border-gray-200 dark:border-gray-800 w-full md:w-auto self-stretch order-2 md:order-3">
+              <button onClick={() => setActiveView('list')} className={`flex-1 md:flex-none px-5 py-1.5 rounded-md text-xs font-bold transition-all ${activeView === 'list' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-red-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>📋 List View</button>
+              <button onClick={() => setActiveView('calendar')} className={`flex-1 md:flex-none px-5 py-1.5 rounded-md text-xs font-bold transition-all ${activeView === 'calendar' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-red-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>📅 Calendar Grid</button>
+            </div>
+          </div>
+
+          {activeView === 'list' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-y-auto">
+              <div className="lg:col-span-2 space-y-6">
+                <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-semibold dark:text-red-400">Classes Agenda</h2>
+                    <div className="flex bg-gray-100 dark:bg-[#1a1a20] rounded-lg p-1 border border-gray-200 dark:border-gray-800">
+                      <button onClick={() => setViewFilter('Today')} className={`px-4 py-1 rounded-md text-sm font-bold transition-colors ${viewFilter === 'Today' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>Today</button>
+                      <button onClick={() => setViewFilter('All')} className={`px-4 py-1 rounded-md text-sm font-bold transition-colors ${viewFilter === 'All' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>All Week</button>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    {displayedClasses.length === 0 ? (
+                      <div className="text-center py-10">
+                        <p className="text-gray-500 dark:text-gray-400 italic">No classes scheduled for {viewFilter === 'Today' ? 'today' : 'this week'}.</p>
+                        <button onClick={() => setActiveTab('schedule')} className="mt-3 text-sm text-blue-600 dark:text-red-400 font-bold hover:underline cursor-pointer">+ Add classes in Schedule Manager</button>
+                      </div>
+                    ) : (
+                      displayedClasses.map((lecture) => {
+                        const status = getClassStatus(lecture);
+                        let containerStyles = "p-5 rounded-lg border transition-all duration-300 group flex flex-col sm:flex-row sm:justify-between ";
+                        if (status === 'past') containerStyles += "bg-gray-100 dark:bg-[#15151a] border-gray-100 dark:border-gray-800 opacity-60"; 
+                        else if (status === 'ongoing') containerStyles += "bg-blue-50 dark:bg-[#1f1618] border-blue-300 dark:border-red-500/60 shadow-[0_0_15px_rgba(59,130,246,0.2)] dark:shadow-[0_0_15px_rgba(239,68,68,0.2)]"; 
+                        else containerStyles += "bg-white dark:bg-[#1a1a20] border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-red-500/50"; 
+
+                        return (
+                          <div key={lecture.id} className={containerStyles}>
+                            <div className="flex flex-col sm:flex-row gap-4 items-start">
+                              <div className="flex flex-col gap-2 relative">
+                                {status === 'ongoing' && <span className="absolute -left-2 -top-2 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 dark:bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500 dark:bg-red-500"></span></span>}
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold border w-fit text-center ${status === 'ongoing' ? 'bg-blue-200 dark:bg-red-900/60 text-blue-800 dark:text-red-300 border-blue-300 dark:border-red-700' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400 border-transparent'}`}>
+                                  {lecture.day}
+                                </span>
+                                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                  {format12Hour(lecture.startTime)} - {format12Hour(lecture.endTime)}
+                                </span>
+                              </div>
+                              <div className="mt-2 sm:mt-0">
+                                <h3 className={`font-bold text-lg transition-colors ${status === 'ongoing' ? 'text-blue-700 dark:text-red-400' : 'group-hover:text-blue-600 dark:group-hover:text-red-400'}`}>
+                                  {lecture.courseCode && <span className="mr-2">{lecture.courseCode}</span>}{lecture.courseName}
+                                </h3>
+                                {lecture.section && <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">Sec {lecture.section}</p>}
+                              </div>
+                            </div>
+                            <div className="mt-4 sm:mt-0 flex sm:flex-col justify-between sm:justify-center items-center sm:items-end gap-3">
+                              <div className={`px-4 py-2 rounded-md shadow-sm border text-sm font-medium text-right ${status === 'ongoing' ? 'bg-blue-100 dark:bg-red-950/40 border-blue-200 dark:border-red-900/50 text-blue-800 dark:text-red-300' : 'bg-white dark:bg-black border-gray-200 dark:border-gray-800 dark:text-gray-300'}`}>
+                                {lecture.building && <span>{lecture.building}</span>}{lecture.building && lecture.room && <br/>}{lecture.room && <span>Room {lecture.room}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-purple-900/30 h-fit">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-semibold dark:text-purple-400">Tasks & Events</h2>
+                  <button 
+                    onClick={() => {
+                      if (showTaskForm) {
+                        // Clear the form data when the user clicks 'X'
+                        setNewTask({ title: '', due: '', time: '', location: '', type: 'Assignment' });
+                      }
+                      setShowTaskForm(!showTaskForm);
+                    }} 
+                    className="text-xl text-blue-600 dark:text-purple-400 hover:text-blue-800 dark:hover:text-purple-300 font-bold px-3 py-1 bg-blue-50 dark:bg-purple-900/30 rounded-md transition-colors cursor-pointer"
+                  >
+                    {showTaskForm ? '✕' : '+'}
+                  </button>
+                </div>
+                {showTaskForm && (
+                  <form onSubmit={handleAddTask} className="mb-6 p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-lg border border-gray-200 dark:border-gray-700 space-y-3">
+                    {/* 1. Task or Event Title */}
+                    <input type="text" placeholder="Task or Event Title" required value={newTask.title} onChange={(e) => setNewTask({...newTask, title: e.target.value})} className="w-full p-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200 placeholder-gray-400 outline-none text-sm" />
+                    
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                      {/* Date Wrapper (Order 2 on Mobile so it's below Assignment, Order 1 on Laptop so it's on the left) */}
+                      <label className="flex items-center w-full sm:w-[55%] bg-white dark:bg-[#121215] border border-gray-200 dark:border-gray-700 rounded-md px-2 py-2 cursor-pointer order-2 sm:order-1">
+                        <span className="text-xs text-gray-500 font-medium mr-1 whitespace-nowrap">Date:</span>
+                        <input 
+                          type="date" 
+                          value={newTask.due} 
+                          onChange={(e) => setNewTask({...newTask, due: e.target.value})} 
+                          className="bg-transparent flex-1 min-w-0 outline-none border-none text-gray-900 dark:text-gray-200 dark:[color-scheme:dark] cursor-pointer text-sm"
+                          required 
+                        />
+                      </label>
+                      
+                      {/* Assignment Dropdown (Order 1 on Mobile so it's on top, Order 2 on Laptop so it's on the right) */}
+                      <div className="w-full sm:w-[45%] flex items-center bg-white dark:bg-[#121215] border border-gray-200 dark:border-gray-700 rounded-md pr-2 min-w-0 order-1 sm:order-2">
+                        <select value={newTask.type} onChange={(e) => setNewTask({...newTask, type: e.target.value})} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 outline-none text-sm cursor-pointer p-2">
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="Assignment">Assignment</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="Quiz">Quiz</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="Exam">Exam</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="Project">Project</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="Event">Event</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="Workshop">Workshop</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="Other">Other</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                      {/* Time Wrapper */}
+                      <label className="flex items-center w-full sm:w-1/2 bg-white dark:bg-[#121215] border border-gray-200 dark:border-gray-700 rounded-md px-2 py-2 cursor-pointer">
+                        <span className="text-xs text-gray-500 font-medium mr-1 whitespace-nowrap">Time:</span>
+                        <input 
+                          type="time" 
+                          value={newTask.time} 
+                          onChange={(e) => setNewTask({...newTask, time: e.target.value})} 
+                          className="bg-transparent flex-1 min-w-0 outline-none border-none text-gray-900 dark:text-gray-200 dark:[color-scheme:dark] cursor-pointer text-sm"
+                          required
+                        />
+                      </label>
+                      
+                      {/* Location */}
+                      <input type="text" placeholder="Location (Optional)" value={newTask.location} onChange={(e) => setNewTask({...newTask, location: e.target.value})} className="w-full sm:w-1/2 p-2 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200 placeholder-gray-400 outline-none text-sm min-w-0" />
+                    </div>
+                    
+                    <button type="submit" className="w-full mt-1 bg-blue-600 dark:bg-purple-600 hover:bg-blue-700 dark:hover:bg-purple-700 text-white py-2 rounded-md font-bold transition-colors cursor-pointer text-sm shadow-sm">Save Task</button>
+                  </form>
+                )}
+                <div className="space-y-3">
+                  {tasks.length === 0 ? (
+                    <p className="text-gray-500 dark:text-gray-400 italic text-sm text-center py-4">No pending tasks. You're all caught up!</p>
+                  ) : (
+                    tasks.map((task) => (
+                      <div key={task.id} className={`p-4 border-l-4 rounded-r-lg shadow-sm transition-all flex justify-between items-start group ${task.completed ? 'border-gray-300 bg-gray-50 dark:bg-[#1a1a20] dark:border-gray-600 opacity-60' : 'border-blue-500 dark:border-purple-600 bg-white dark:bg-[#1a1a20]'}`}>
+                        <div className="flex items-start gap-3 w-full">
+                          <input type="checkbox" checked={task.completed} onChange={() => toggleTaskCompletion(task.id)} className="mt-1 h-4 w-4 rounded border-gray-300 text-purple-600 cursor-pointer flex-shrink-0" />
+                          <div className="w-full">
+                            <h3 className={`font-semibold text-md ${task.completed ? 'text-gray-500 line-through dark:text-gray-400' : 'dark:text-gray-200'}`}>{task.title}</h3>
+                            <div className="flex flex-wrap gap-2 items-center mt-2 text-xs text-gray-500 dark:text-gray-400">
+                              {task.due && <span>📅 {task.due}</span>}
+                              {task.time && <span>⏰ {format12Hour(task.time)}</span>}
+                              {task.location && <span>📍 {task.location}</span>}
+                              <span className="bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded ml-auto font-medium">{task.type}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <button onClick={() => handleDeleteTask(task.id)} className="text-gray-400 hover:text-red-500 cursor-pointer p-1 ml-2">✕</button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeView === 'calendar' && (
+            <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm border border-gray-100 dark:border-red-900/30 flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-auto">
+                <div className="min-w-full lg:min-w-[800px] w-full relative pb-4">
+                  <div className="hidden lg:flex border-b border-gray-200 dark:border-gray-800 sticky top-0 bg-white dark:bg-[#121215] z-20">
+                      <div className="w-16 shrink-0 bg-gray-50 dark:bg-[#1a1a20]"></div> 
+                      {displayDays.map(day => (
+                          <div key={day} className={`flex-1 text-center py-3 font-bold text-sm border-l border-gray-200 dark:border-gray-800 ${day === currentDayStr ? 'text-blue-600 dark:text-red-400 bg-blue-50/50 dark:bg-red-900/10' : 'text-gray-700 dark:text-gray-300'}`}>
+                              {day.substring(0,3).toUpperCase()}
+                          </div>
+                      ))}
+                  </div>
+                  <div className="flex lg:hidden border-b border-gray-200 dark:border-gray-800 sticky top-0 bg-white dark:bg-[#121215] z-20">
+                      <div className="w-12 sm:w-16 shrink-0 bg-gray-50 dark:bg-[#1a1a20]"></div> 
+                      <div className="flex-1 border-l border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#1a1a20]">
+                          <select 
+                              value={activeGridDay}
+                              onChange={(e) => setActiveGridDay(e.target.value)}
+                              className="w-full text-center py-3 font-bold text-sm bg-transparent outline-none text-blue-600 dark:text-red-400 cursor-pointer"
+                              style={{ textAlignLast: 'center' }}
+                          >
+                              {displayDays.map(day => (
+                                  <option key={day} value={day} className="text-gray-900 dark:text-gray-200 bg-white dark:bg-[#121215]">
+                                      {day} ▾
+                                  </option>
+                              ))}
+                          </select>
+                      </div>
+                  </div>
+                  <div className="flex relative" style={{ height: '800px' }}>
+                      <div className="w-12 sm:w-16 shrink-0 flex flex-col relative border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#1a1a20]">
+                          {hoursArray.map(hour => (
+                              <div key={hour} className="absolute w-full text-right pr-2 sm:pr-3 text-[10px] sm:text-[11px] font-bold text-gray-400 dark:text-gray-500"
+                                   style={{ top: `${((hour - startHour) / (endHour - startHour)) * 100}%`, transform: 'translateY(-50%)' }}>
+                                  {format12Hour(`${hour.toString().padStart(2, '0')}:00`)}
+                              </div>
+                          ))}
+                      </div>
+                      {displayDays.map(day => (
+                        <div key={day} className={`flex-1 relative border-l border-gray-200 dark:border-gray-800 
+                            ${activeGridDay === day ? 'block' : 'hidden lg:block'} 
+                            ${day === currentDayStr ? 'bg-blue-50/30 dark:bg-red-900/5' : ''}`}>
+                            
+                            {/* Horizontal Hour Lines */}
+                            {hoursArray.map(hour => (
+                                <div key={hour} className="absolute w-full border-t border-gray-100 dark:border-gray-800/60 pointer-events-none"
+                                    style={{ top: `${((hour - startHour) / (endHour - startHour)) * 100}%` }}></div>
+                            ))}
+                            
+                            {/* RENDER LECTURES OR TASKS */}
+                            {gridContentType === 'Lectures' ? (
+                              currentClasses.filter(c => c.day === day).map((lecture) => {
+                                  const style = getEventStyle(lecture.startTime, lecture.endTime);
+                                  const colorClass = getEventColor(lecture.courseCode); 
+                                  return (
+                                      <div key={lecture.id}
+                                          className={`absolute w-[92%] left-[4%] rounded-md border-l-4 p-2 text-xs overflow-hidden shadow-sm z-10 ${colorClass}`}
+                                          style={style}>
+                                          <div className="font-extrabold truncate text-[11px] uppercase tracking-wider">{lecture.courseCode}</div>
+                                          <div className="truncate font-bold opacity-90">{lecture.courseName}</div>
+                                          <div className="opacity-75 mt-1 font-medium text-[10px] sm:text-xs">{format12Hour(lecture.startTime)} - {format12Hour(lecture.endTime)}</div>
+                                          {lecture.room && <div className="opacity-75 font-medium truncate mt-0.5 text-[10px] sm:text-xs">Room {lecture.room}</div>}
+                                      </div>
+                                  );
+                              })
+                            ) : (
+                              tasks.filter(t => {
+                                  if (!t.due || !t.time || t.completed) return false;
+                                  // Safely convert YYYY-MM-DD to a Day string without timezone shifts
+                                  const taskDayStr = new Date(t.due + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+                                  return taskDayStr === day;
+                              }).map((task) => (
+                                  <div key={task.id}
+                                      className="absolute w-[92%] left-[4%] rounded-md border-l-4 border-purple-500 bg-white dark:bg-[#1a1a20] p-1.5 text-xs overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_12px_rgba(168,85,247,0.15)] z-20 flex flex-col justify-center transition-all hover:scale-[1.02]"
+                                      style={getTaskStyle(task.time)}>
+                                      <div className="font-extrabold truncate text-[11px] text-gray-900 dark:text-purple-300">{task.title}</div>
+                                      <div className="opacity-80 font-medium truncate text-[10px] text-gray-600 dark:text-gray-400">
+                                          {format12Hour(task.time)} {task.location ? `• ${task.location}` : ''}
+                                      </div>
+                                  </div>
+                              ))
+                            )}
+                        </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: SCHEDULE MANAGER */}
+      {activeTab === 'schedule' && (
+        <div className="flex-1 space-y-6 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
+            <h2 className="text-xl font-semibold mb-2 dark:text-red-400">Class Timetable Management</h2>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Add new lectures or delete existing slots for {activeSemester}.</p>
+            <form onSubmit={handleAddClass} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-gray-50 dark:bg-[#1a1a20] p-4 rounded-xl border border-gray-200 dark:border-gray-800">
+              <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-200 dark:border-gray-700 rounded-md pr-2 focus-within:ring-2 focus-within:ring-red-500">
+                <select value={newClass.day} onChange={(e) => setNewClass({...newClass, day: e.target.value})} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 outline-none cursor-pointer p-2.5">
+                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(d => <option key={d} value={d} className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200">{d}</option>)}
+                </select>
+              </div>
+              <input type="text" placeholder="Course Code (e.g. ENR211)" value={newClass.courseCode} onChange={(e) => setNewClass({...newClass, courseCode: e.target.value})} className="p-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200 outline-none" />
+              <input type="text" placeholder="Course Name" value={newClass.courseName} onChange={(e) => setNewClass({...newClass, courseName: e.target.value})} className="p-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200 lg:col-span-2 outline-none" />
+              <input type="text" placeholder="Section (e.g. 2)" value={newClass.section} onChange={(e) => setNewClass({...newClass, section: e.target.value})} className="p-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200 outline-none" />
+              <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2">
+                <span className="text-xs text-gray-500 font-medium mr-2 whitespace-nowrap">Start:</span>
+                <input type="time" required value={newClass.startTime} onChange={(e) => setNewClass({...newClass, startTime: e.target.value})} className="bg-transparent w-full outline-none text-gray-900 dark:text-gray-200 dark:[color-scheme:dark] cursor-pointer" />
+              </div>
+              <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2">
+                <span className="text-xs text-gray-500 font-medium mr-2 whitespace-nowrap">End:</span>
+                <input type="time" required value={newClass.endTime} onChange={(e) => setNewClass({...newClass, endTime: e.target.value})} className="bg-transparent w-full outline-none text-gray-900 dark:text-gray-200 dark:[color-scheme:dark] cursor-pointer" />
+              </div>
+              <input type="text" placeholder="Building (e.g. GICT)" value={newClass.building} onChange={(e) => setNewClass({...newClass, building: e.target.value})} className="p-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200 outline-none" />
+              <div className="flex gap-2 lg:col-span-4 mt-2">
+                <input type="text" placeholder="Classroom (e.g. 236)" value={newClass.room} onChange={(e) => setNewClass({...newClass, room: e.target.value})} className="w-full p-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200 outline-none" />
+                <button type="submit" className="bg-blue-600 dark:bg-red-600 hover:bg-blue-700 dark:hover:bg-red-700 text-white px-8 rounded-md font-bold transition-colors cursor-pointer shadow-md">+ Add Class</button>
+              </div>
+            </form>
+          </div>
+          <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800">
+            <h3 className="text-lg font-bold mb-4">Current Registered Classes ({currentClasses.length})</h3>
+            <div className="space-y-3">
+              {currentClasses.length === 0 ? (
+                <p className="text-gray-500 italic text-sm">No classes added yet.</p>
+              ) : (
+                currentClasses.map((item) => (
+                  <div key={item.id} className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-lg border border-gray-200 dark:border-gray-800 flex justify-between items-center">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-blue-600 dark:text-red-400">{item.day}</span>
+                        <span className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded font-semibold">{format12Hour(item.startTime)} - {format12Hour(item.endTime)}</span>
+                      </div>
+                      <h4 className="font-semibold text-md mt-1">{item.courseCode} {item.courseName}</h4>
+                      <p className="text-xs text-gray-500">{item.building} {item.room ? `• Room ${item.room}` : ''} {item.section ? `• Sec ${item.section}` : ''}</p>
+                    </div>
+                    <button onClick={() => handleDeleteClass(item.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-2 rounded-md font-bold text-sm cursor-pointer">Delete</button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: SETTINGS & NOTIFICATIONS */}
+      {activeTab === 'settings' && (
+        <div className="flex-1 space-y-6 animate-in fade-in duration-300 max-w-4xl">
+          <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
+            <h2 className="text-xl font-semibold mb-1 dark:text-red-400">Notification Preferences</h2>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Configure how and when your mobile device alerts you about lectures and deadlines.</p>
+            <div className="space-y-6">
+              <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-md">Lecture Alerts</h3>
+                    <p className="text-xs text-gray-500">Receive reminders prior to your scheduled class time.</p>
+                  </div>
+                  {/* Red tick box for lecture alerts */}
+                  <input type="checkbox" checked={notifSettings.classNotifs} onChange={(e) => handleNotifSettingsChange('classNotifs', e.target.checked)} className="h-5 w-5 accent-red-600 cursor-pointer" />
+                </div>
+                {notifSettings.classNotifs && (
+                  <div className="flex items-center gap-3 pt-2 border-t border-gray-200 dark:border-gray-800">
+                  <span className="text-sm font-medium">Remind me:</span>
+                  <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-300 dark:border-gray-700 rounded-md pr-2 w-full sm:w-64">
+                    <select value={notifSettings.classLeadTime} onChange={(e) => handleNotifSettingsChange('classLeadTime', e.target.value)} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 text-sm outline-none font-bold cursor-pointer p-2">
+                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="5">5 minutes before</option>
+                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="10">10 minutes before</option>
+                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="15">15 minutes before</option>
+                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="20">20 minutes before</option>
+                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="30">30 minutes before</option>
+                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="45">45 minutes before</option>
+                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="60">1 hour before</option>
+                    </select>
+                  </div>
+                </div>
+                )}
+              </div>
+              <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-md">Task & Assignment Alerts</h3>
+                    <p className="text-xs text-gray-500">Scheduled reminders for assignments, quizzes, and projects.</p>
+                  </div>
+                  {/* Red tick box for task alerts */}
+                  <input type="checkbox" checked={notifSettings.taskNotifs} onChange={(e) => handleNotifSettingsChange('taskNotifs', e.target.checked)} className="h-5 w-5 accent-red-600 cursor-pointer" />
+                </div>
+                {notifSettings.taskNotifs && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-200 dark:border-gray-800">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium whitespace-nowrap">Remind me:</span>
+                      <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-300 dark:border-gray-700 rounded-md pr-2 w-full">
+                        <select value={notifSettings.taskLeadTime} onChange={(e) => handleNotifSettingsChange('taskLeadTime', e.target.value)} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 text-sm outline-none font-bold cursor-pointer p-2">
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="15">15 minutes before</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="60">1 hour before</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="1440">1 day before</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="10080">1 week before</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium whitespace-nowrap">Repetition:</span>
+                      <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-300 dark:border-gray-700 rounded-md pr-2 w-full">
+                        <select value={notifSettings.taskRepeatFrequency} onChange={(e) => handleNotifSettingsChange('taskRepeatFrequency', e.target.value)} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 text-sm outline-none font-bold cursor-pointer p-2">
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="once">Once only</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="daily">Daily Digest (Morning/Evening)</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="hourly">Every Hour</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* --- VIBRATION TOGGLE --- */}
+              <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-md">Haptic Feedback</h3>
+                    <p className="text-xs text-gray-500">Allow notifications to physically vibrate the device.</p>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    checked={notifSettings.vibrateEnabled !== false} 
+                    onChange={(e) => handleNotifSettingsChange('vibrateEnabled', e.target.checked)} 
+                    className="h-5 w-5 accent-red-600 cursor-pointer" 
+                  />
+                </div>
+              </div>
+
+              {/* --- EXACT ALARM & BACKGROUND DELIVERY ENGINE --- */}
+              <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-md flex items-center gap-2">
+                      <span>Background Alarm Engine</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-red-950/60 text-blue-800 dark:text-red-300 border border-blue-200 dark:border-red-900/50">
+                        AlarmClock v2
+                      </span>
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {scheduledAlarms.length} exact wake-up alarm{scheduledAlarms.length === 1 ? '' : 's'} queued ({notifSettings.classNotifs ? 'Lectures ON' : 'Lectures OFF'} • {notifSettings.taskNotifs ? 'Tasks ON' : 'Tasks OFF'}).
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await scheduleTestNotification(notifSettings.vibrateEnabled);
+                        setTestAlertFeedback(res.message);
+                        setTimeout(() => setTestAlertFeedback(null), 7000);
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 dark:bg-red-600 hover:bg-blue-700 dark:hover:bg-red-700 text-white transition-colors cursor-pointer shadow-sm"
+                    >
+                      🔔 Send 5s Test Alert
+                    </button>
+                  </div>
+                </div>
+
+                {/* Android System Diagnostics & Power Management Status */}
+                {notifStatus.isNative && (
+                  <div className="p-3 bg-white dark:bg-[#121215] rounded-lg border border-gray-200 dark:border-gray-800 space-y-2.5">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="text-gray-500 font-medium">System Readiness:</span>
+                      
+                      {/* Battery Optimization Status */}
+                      {notifStatus.isBatteryIgnored ? (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 flex items-center gap-1">
+                          ⚡ Battery: Unrestricted
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 flex items-center gap-1">
+                          ⚠️ Battery: Restricted
+                        </span>
+                      )}
+
+                      {/* Exact Alarms Status */}
+                      {notifStatus.exactAlarmStatus === 'granted' ? (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 flex items-center gap-1">
+                          ⏰ Exact Alarms: Active
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 flex items-center gap-1">
+                          ⚠️ Exact Alarms: Disabled
+                        </span>
+                      )}
+
+                      {/* Notification Display Permission */}
+                      {notifStatus.displayPermission === 'granted' ? (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 flex items-center gap-1">
+                          🔔 Alerts: Allowed
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/50 flex items-center gap-1">
+                          🚫 Alerts: Blocked
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Action buttons to resolve any battery / exact alarm blocks */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-800/60">
+                      {!notifStatus.isBatteryIgnored && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await requestIgnoreBatteryOptimization();
+                            setTimeout(refreshDiagnostics, 1000);
+                          }}
+                          className="px-2.5 py-1 rounded text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer"
+                        >
+                          ⚡ Disable Battery Restriction
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await openBatterySettings();
+                        }}
+                        className="px-2.5 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer"
+                      >
+                        ⚙️ Battery Mode (Set to Unrestricted)
+                      </button>
+
+                      {notifStatus.exactAlarmStatus !== 'granted' && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await openExactAlarmSettings();
+                            setTimeout(refreshDiagnostics, 1000);
+                          }}
+                          className="px-2.5 py-1 rounded text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer"
+                        >
+                          ⏰ Allow Exact Alarms
+                        </button>
+                      )}
+
+                      {/* Manufacturer Autostart / Background protection */}
+                      {['xiaomi', 'redmi', 'poco', 'samsung', 'oneplus', 'oppo', 'vivo', 'realme', 'huawei'].some(m => notifStatus.manufacturer?.toLowerCase().includes(m)) && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await openAutostartSettings();
+                          }}
+                          className="px-2.5 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer"
+                        >
+                          📱 Phone Autostart ({notifStatus.manufacturer.toUpperCase()})
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                      Reminders are scheduled using Android Alarm Clock engine. To ensure notifications ring reliably 5 or 10 minutes before class when your phone is locked or overnight, ensure battery is set to <span className="font-semibold text-gray-600 dark:text-gray-300">Unrestricted</span>.
+                    </p>
+                  </div>
+                )}
+
+                {testAlertFeedback && (
+                  <div className="text-xs font-medium px-3 py-2 rounded-lg bg-blue-50 dark:bg-red-950/40 text-blue-700 dark:text-red-300 border border-blue-200 dark:border-red-800/60">
+                    {testAlertFeedback}
+                  </div>
+                )}
+
+                {scheduledAlarms.length > 0 && (
+                  <div className="pt-2 border-t border-gray-200 dark:border-gray-800 space-y-1.5">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Next Upcoming Scheduled Alerts</p>
+                    {scheduledAlarms.slice(0, 4).map((alarm) => (
+                      <div key={alarm.id} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs bg-white dark:bg-[#121215] px-3 py-2 rounded-md border border-gray-200 dark:border-gray-800 gap-1">
+                        <span className="font-semibold text-gray-800 dark:text-gray-200 truncate">{alarm.title}</span>
+                        <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap font-mono text-[11px]">
+                          {new Date(alarm.triggerAt).toLocaleString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800">
+            <h2 className="text-xl font-semibold mb-1">Account & Sync</h2>
+            <div className="p-4 mt-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-lg flex justify-between items-center">
+              <div>
+                <span className="text-xs font-bold uppercase text-green-600 dark:text-green-500">Status</span>
+                <p className="font-bold text-sm mt-0.5">Firebase Database Connected</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Logged in as {user.email}</p>
+              </div>
+              <span className="text-2xl">✅</span>
+            </div>
+          </div>
+        </div>
+      )} {/* <-- This correctly closes the Settings Tab! */}
+
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-2 z-50 flex justify-around">
+        <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center py-1 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === 'dashboard' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
+          <span className="text-lg">📊</span>
+          Dashboard
+        </button>
+        <button onClick={() => setActiveTab('schedule')} className={`flex flex-col items-center py-1 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === 'schedule' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
+          <span className="text-lg">✏️</span>
+          Schedule
+        </button>
+        <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center py-1 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === 'settings' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
+          <span className="text-lg">⚙️</span>
+          Settings
+        </button>
+      </div>
+
+    </div>
+  );
+}

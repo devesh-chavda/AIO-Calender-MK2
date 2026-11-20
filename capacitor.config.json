@@ -1,0 +1,18 @@
+{
+  "appId": "com.aiocalender",
+  "appName": "AIO-Calender",
+  "webDir": "dist",
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "clientId": "20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com",
+      "androidClientId": "20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com",
+      "serverClientId": "20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": false
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon_config_sample",
+      "iconColor": "#EF4444"
+    }
+  }
+}

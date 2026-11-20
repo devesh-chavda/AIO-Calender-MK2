@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AIO Calender</string>
+    <string name="title_activity_main">AIO Calender</string>
+    <string name="package_name">com.aiocalender</string>
+    <string name="custom_url_scheme">com.aiocalender</string>
+    <string name="server_client_id">20006102155-572mn31v7pjgi64lr17ba6ag7qrhgo0s.apps.googleusercontent.com</string>
+</resources>

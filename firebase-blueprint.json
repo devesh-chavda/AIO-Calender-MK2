@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "UserWorkspace": {
+      "title": "UserWorkspace",
+      "description": "Stores a user's semester class schedules, tasks/deadlines, and notification preferences.",
+      "type": "object",
+      "properties": {
+        "schedules": {
+          "type": "object",
+          "description": "Map of semester names to lists of scheduled classes."
+        },
+        "tasks": {
+          "type": "array",
+          "description": "List of academic tasks, assignments, exams, and events."
+        },
+        "notifSettings": {
+          "type": "object",
+          "description": "User preferences for class and task notifications and haptics."
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserWorkspace"
+      },
+      "description": "Per-user workspace document keyed by the authenticated Firebase user UID."
+    }
+  }
+}
