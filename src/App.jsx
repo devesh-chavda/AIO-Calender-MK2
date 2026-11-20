@@ -333,7 +333,6 @@ function MainDashboard({ user }) {
   }, [activeSemester]);
 
   // Notification Diagnostics State
-  const [scheduledAlarms, setScheduledAlarms] = useState([]);
   const [notifStatus, setNotifStatus] = useState({
     isNative: false,
     displayPermission: 'default',
@@ -374,16 +373,10 @@ function MainDashboard({ user }) {
 
   // 2. Monitor Firebase data to rebuild the alarms dynamically
   useEffect(() => {
-    let active = true;
     if (allSchedules && tasks && notifSettings) {
       const currentClasses = allSchedules[activeSemester] || [];
-      syncAllAlarms(currentClasses, tasks, notifSettings).then((alarms) => {
-        if (active && Array.isArray(alarms)) {
-          setScheduledAlarms(alarms);
-        }
-      });
+      syncAllAlarms(currentClasses, tasks, notifSettings);
     }
-    return () => { active = false; };
   }, [allSchedules, tasks, activeSemester, notifSettings]);
 
   // ----------------------------------------
@@ -620,7 +613,7 @@ function MainDashboard({ user }) {
           <button 
             onClick={() => setActiveTab('settings')} 
             className={`px-5 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center gap-2 ${activeTab === 'settings' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-red-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}>
-            ⚙️ Settings & Notifs
+            ⚙️ Advanced Settings
           </button>
         </nav>
 
@@ -1009,12 +1002,12 @@ function MainDashboard({ user }) {
         </div>
       )}
 
-      {/* TAB 3: SETTINGS & NOTIFICATIONS */}
+      {/* TAB 3: ADVANCED SETTINGS & NOTIFICATIONS */}
       {activeTab === 'settings' && (
         <div className="flex-1 space-y-6 animate-in fade-in duration-300 max-w-4xl">
           <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
-            <h2 className="text-xl font-semibold mb-1 dark:text-red-400">Notification Preferences</h2>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Configure how and when your mobile device alerts you about lectures and deadlines.</p>
+            <h2 className="text-xl font-semibold mb-1 dark:text-red-400">Advanced Settings & Notifications</h2>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Configure lecture reminders, deadline alerts, and device background delivery settings.</p>
             <div className="space-y-6">
               <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
                 <div className="flex items-center justify-between">
@@ -1093,85 +1086,53 @@ function MainDashboard({ user }) {
                 </div>
               </div>
 
-              {/* --- SCHEDULED ALERTS (CLEAN & CONSUMER-FRIENDLY) --- */}
+              {/* --- ADVANCED OPTIONS / SETTINGS --- */}
               <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedTuning(!showAdvancedTuning)}
+                  className="w-full flex items-center justify-between text-left cursor-pointer group"
+                >
                   <div>
                     <h3 className="font-bold text-md flex items-center gap-2">
-                      <span>Scheduled Alerts</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50">
-                        Active
-                      </span>
+                      <span>Advanced Settings</span>
                     </h3>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {scheduledAlarms.length} upcoming alert{scheduledAlarms.length === 1 ? '' : 's'} scheduled ({notifSettings.classNotifs ? 'Lectures ON' : 'Lectures OFF'} • {notifSettings.taskNotifs ? 'Tasks ON' : 'Tasks OFF'}).
+                      System battery optimization and OEM device management.
                     </p>
                   </div>
-                </div>
-
-                {scheduledAlarms.length > 0 ? (
-                  <div className="pt-2 border-t border-gray-200 dark:border-gray-800 space-y-1.5">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Upcoming Alerts</p>
-                    {scheduledAlarms.slice(0, 4).map((alarm) => (
-                      <div key={alarm.id} className="flex flex-col sm:flex-row sm:items-center justify-between text-xs bg-white dark:bg-[#121215] px-3 py-2 rounded-md border border-gray-200 dark:border-gray-800 gap-1">
-                        <span className="font-semibold text-gray-800 dark:text-gray-200 truncate">{alarm.title}</span>
-                        <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap font-mono text-[11px]">
-                          {new Date(alarm.triggerAt || alarm.triggerTimeMs).toLocaleString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit'
-                          })}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 group-hover:bg-gray-300 dark:group-hover:bg-gray-700 transition-colors">
+                    <span>{showAdvancedTuning ? 'Hide Options ▲' : 'Advanced Options ▼'}</span>
                   </div>
-                ) : (
-                  <p className="text-xs text-gray-400 italic">No upcoming lectures or tasks scheduled right now.</p>
-                )}
+                </button>
 
-                {/* Optional Collapsible OEM Device Settings (Universal for all Android brands) */}
-                {notifStatus.isNative && (
-                  <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvancedTuning(!showAdvancedTuning)}
-                      className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <span>{showAdvancedTuning ? '▼' : '▶'}</span>
-                      <span>Advanced Device Tuning (Optional)</span>
-                    </button>
-
-                    {showAdvancedTuning && (
-                      <div className="mt-2.5 p-3 bg-white dark:bg-[#121215] rounded-lg border border-gray-200 dark:border-gray-800 space-y-2">
-                        <p className="text-[11px] text-gray-500 leading-relaxed">
-                          Alarms are scheduled using Android&apos;s native AlarmClock engine which rings accurately on Default battery mode and Power Saving mode. If your phone manufacturer has aggressive background management, you can access device settings here:
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await openBatterySettings();
-                            }}
-                            className="px-2.5 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer"
-                          >
-                            ⚙️ App Battery Settings
-                          </button>
-                          {['xiaomi', 'redmi', 'poco', 'samsung', 'oneplus', 'oppo', 'vivo', 'realme', 'huawei'].some(m => notifStatus.manufacturer?.toLowerCase().includes(m)) && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await openAutostartSettings();
-                              }}
-                              className="px-2.5 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer"
-                            >
-                              📱 Autostart Settings ({notifStatus.manufacturer ? notifStatus.manufacturer.toUpperCase() : 'OEM'})
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                {showAdvancedTuning && (
+                  <div className="pt-3 border-t border-gray-200 dark:border-gray-800 space-y-3">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                      Alarms are scheduled using Android&apos;s native AlarmClock engine which rings accurately on Default battery mode and Power Saving mode. If your phone manufacturer has aggressive background management, you can access device settings here:
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await openBatterySettings();
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer border border-gray-300 dark:border-gray-700 flex items-center gap-1.5"
+                      >
+                        ⚙️ App Battery Settings
+                      </button>
+                      {['xiaomi', 'redmi', 'poco', 'samsung', 'oneplus', 'oppo', 'vivo', 'realme', 'huawei'].some(m => notifStatus.manufacturer?.toLowerCase().includes(m)) && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await openAutostartSettings();
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer border border-gray-300 dark:border-gray-700 flex items-center gap-1.5"
+                        >
+                          📱 Autostart Settings ({notifStatus.manufacturer ? notifStatus.manufacturer.toUpperCase() : 'OEM'})
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1204,7 +1165,7 @@ function MainDashboard({ user }) {
         </button>
         <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center py-1 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === 'settings' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
           <span className="text-lg">⚙️</span>
-          Settings
+          Advanced Settings
         </button>
       </div>
 

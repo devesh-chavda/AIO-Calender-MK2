@@ -189,7 +189,26 @@ public class AIOAlarmPlugin extends Plugin {
             if (manufacturer.contains("xiaomi") || manufacturer.contains("redmi") || manufacturer.contains("poco")) {
                 intent.setComponent(new ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"));
             } else if (manufacturer.contains("samsung")) {
-                intent.setComponent(new ComponentName("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"));
+                // Galaxy S-series (including S24, S25, S26 Ultra) and One UI 5 / 6 / 7 / 8
+                String[][] samsungTargets = {
+                    {"com.samsung.android.sm", "com.samsung.android.sm.battery.ui.UsageLimitsActivity"},
+                    {"com.samsung.android.lool", "com.samsung.android.sm.battery.ui.UsageLimitsActivity"},
+                    {"com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"},
+                    {"com.samsung.android.sm", "com.samsung.android.sm.ui.battery.BatteryActivity"},
+                    {"com.samsung.android.sm", "com.samsung.android.sm.battery.ui.BatteryActivity"},
+                    {"com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"}
+                };
+                for (String[] target : samsungTargets) {
+                    try {
+                        Intent samsungIntent = new Intent();
+                        samsungIntent.setComponent(new ComponentName(target[0], target[1]));
+                        samsungIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(samsungIntent);
+                        launched = true;
+                        break;
+                    } catch (Exception ignored) {
+                    }
+                }
             } else if (manufacturer.contains("oneplus") || manufacturer.contains("oppo") || manufacturer.contains("realme")) {
                 intent.setComponent(new ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"));
             } else if (manufacturer.contains("vivo") || manufacturer.contains("iqoo")) {

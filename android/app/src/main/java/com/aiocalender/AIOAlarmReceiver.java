@@ -86,8 +86,20 @@ public class AIOAlarmReceiver extends BroadcastReceiver {
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
-                .setContentIntent(contentPendingIntent)
-                .setFullScreenIntent(contentPendingIntent, true);
+                .setContentIntent(contentPendingIntent);
+
+            if (Build.VERSION.SDK_INT >= 34) {
+                try {
+                    NotificationManager checkNm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+                    if (checkNm == null || checkNm.canUseFullScreenIntent()) {
+                        builder.setFullScreenIntent(contentPendingIntent, true);
+                    }
+                } catch (Throwable ignored) {
+                    builder.setFullScreenIntent(contentPendingIntent, true);
+                }
+            } else {
+                builder.setFullScreenIntent(contentPendingIntent, true);
+            }
 
             if (vibrate) {
                 builder.setVibrate(new long[]{0, 500, 250, 500, 250, 500});
@@ -118,45 +130,55 @@ public class AIOAlarmReceiver extends BroadcastReceiver {
 
     public static void ensureChannels(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm == null) return;
+            try {
+                NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+                if (nm == null) return;
 
-            Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            AudioAttributes audioAttr = new AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .build();
+                Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+                if (soundUri == null) {
+                    soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+                }
+                AudioAttributes audioAttr = new AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .build();
 
-            // Channel 1: Vibrate + Sound
-            NotificationChannel vibrateChannel = new NotificationChannel(
-                CHANNEL_VIBRATE,
-                "AIO Lecture Reminders (Alert)",
-                NotificationManager.IMPORTANCE_HIGH
-            );
-            vibrateChannel.setDescription("High priority exact alarm reminders for lectures and tasks with sound and vibration");
-            vibrateChannel.enableVibration(true);
-            vibrateChannel.setVibrationPattern(new long[]{0, 500, 250, 500, 250, 500});
-            vibrateChannel.enableLights(true);
-            vibrateChannel.setLightColor(Color.RED);
-            vibrateChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            vibrateChannel.setBypassDnd(true);
-            if (soundUri != null) {
-                vibrateChannel.setSound(soundUri, audioAttr);
+                // Channel 1: Vibrate + Sound
+                NotificationChannel vibrateChannel = new NotificationChannel(
+                    CHANNEL_VIBRATE,
+                    "AIO Lecture Reminders (Alert)",
+                    NotificationManager.IMPORTANCE_HIGH
+                );
+                vibrateChannel.setDescription("High priority exact alarm reminders for lectures and tasks with sound and vibration");
+                vibrateChannel.enableVibration(true);
+                vibrateChannel.setVibrationPattern(new long[]{0, 500, 250, 500, 250, 500});
+                vibrateChannel.enableLights(true);
+                vibrateChannel.setLightColor(Color.RED);
+                vibrateChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                try {
+                    vibrateChannel.setBypassDnd(true);
+                } catch (Throwable ignored) {
+                }
+                if (soundUri != null) {
+                    vibrateChannel.setSound(soundUri, audioAttr);
+                }
+                nm.createNotificationChannel(vibrateChannel);
+
+                // Channel 2: Silent
+                NotificationChannel silentChannel = new NotificationChannel(
+                    CHANNEL_SILENT,
+                    "AIO Lecture Reminders (Silent)",
+                    NotificationManager.IMPORTANCE_HIGH
+                );
+                silentChannel.setDescription("High priority exact alarm reminders without sound or vibration");
+                silentChannel.enableVibration(false);
+                silentChannel.enableLights(true);
+                silentChannel.setSound(null, null);
+                silentChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                nm.createNotificationChannel(silentChannel);
+            } catch (Throwable t) {
+                t.printStackTrace();
             }
-            nm.createNotificationChannel(vibrateChannel);
-
-            // Channel 2: Silent
-            NotificationChannel silentChannel = new NotificationChannel(
-                CHANNEL_SILENT,
-                "AIO Lecture Reminders (Silent)",
-                NotificationManager.IMPORTANCE_HIGH
-            );
-            silentChannel.setDescription("High priority exact alarm reminders without sound or vibration");
-            silentChannel.enableVibration(false);
-            silentChannel.enableLights(true);
-            silentChannel.setSound(null, null);
-            silentChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            nm.createNotificationChannel(silentChannel);
         }
     }
 }

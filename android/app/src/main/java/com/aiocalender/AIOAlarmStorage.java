@@ -2,6 +2,7 @@ package com.aiocalender;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.ArrayList;
@@ -49,7 +50,21 @@ public class AIOAlarmStorage {
     }
 
     public AIOAlarmStorage(Context context) {
-        this.prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        Context targetContext = context;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                Context deContext = context.createDeviceProtectedStorageContext();
+                if (deContext != null) {
+                    try {
+                        deContext.moveSharedPreferencesFrom(context, PREF_NAME);
+                    } catch (Throwable ignored) {
+                    }
+                    targetContext = deContext;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        this.prefs = targetContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
     }
 
     public synchronized void saveAlarms(List<AlarmEntry> list) {

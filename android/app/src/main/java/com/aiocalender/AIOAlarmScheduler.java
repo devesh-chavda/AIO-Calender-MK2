@@ -12,8 +12,12 @@ public class AIOAlarmScheduler {
 
     public static boolean canScheduleExactAlarms(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-            return am != null && am.canScheduleExactAlarms();
+            try {
+                AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+                return am != null && am.canScheduleExactAlarms();
+            } catch (Throwable t) {
+                return true;
+            }
         }
         return true;
     }
@@ -63,17 +67,29 @@ public class AIOAlarmScheduler {
         } catch (SecurityException se) {
             // Fallback for devices restricting setAlarmClock
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, entry.triggerTimeMs, pendingIntent);
+                if (canScheduleExactAlarms(context)) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, entry.triggerTimeMs, pendingIntent);
+                    } else {
+                        alarmManager.setExact(AlarmManager.RTC_WAKEUP, entry.triggerTimeMs, pendingIntent);
+                    }
                 } else {
-                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, entry.triggerTimeMs, pendingIntent);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, entry.triggerTimeMs, pendingIntent);
+                    } else {
+                        alarmManager.set(AlarmManager.RTC_WAKEUP, entry.triggerTimeMs, pendingIntent);
+                    }
                 }
-            } catch (Exception ignored) {
+            } catch (Throwable ignored) {
+                try {
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, entry.triggerTimeMs, pendingIntent);
+                } catch (Throwable ignored2) {
+                }
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             try {
                 alarmManager.set(AlarmManager.RTC_WAKEUP, entry.triggerTimeMs, pendingIntent);
-            } catch (Exception ignored) {
+            } catch (Throwable ignored) {
             }
         }
     }
