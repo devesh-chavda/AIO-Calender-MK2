@@ -7,7 +7,7 @@
     "postinstall": "node scripts/patch-google-auth.cjs",
     "cap:sync": "cap sync android",
     "cap:copy": "cap copy android",
-    "build": "cd android && .\\gradlew.bat assembleRelease"
+    "build": "cd android && .\\gradlew.bat assembleRelease && cd .. && node -e \"require('fs').copyFileSync('android/app/build/outputs/apk/release/app-release.apk', '../release-builds/AIO-Calender-MK2.apk')\""
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

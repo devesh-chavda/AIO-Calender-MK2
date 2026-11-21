@@ -10,7 +10,9 @@
     "preview": "npm --prefix web run preview",
     "build:web": "npm --prefix web run build",
     "lint:web": "npm --prefix web run lint",
-    "build:mobile": "cd mobile/android && .\\gradlew.bat assembleRelease",
+    "cap:sync": "npm --prefix mobile run cap:sync",
+    "cap:copy": "npm --prefix mobile run cap:copy",
+    "build:mobile": "cd mobile/android && .\\gradlew.bat assembleRelease && cd ../.. && node -e \"require('fs').copyFileSync('mobile/android/app/build/outputs/apk/release/app-release.apk', 'release-builds/AIO-Calender-MK2.apk')\"",
     "build:desktop": "npm --prefix desktop run build",
     "install:all": "npm --prefix web install && npm --prefix mobile install"
   }
