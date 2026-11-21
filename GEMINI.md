@@ -40,3 +40,9 @@
 - **Windows Native Client (`desktop/`)**: Dedicated module for Windows x64 native client.
 - **Local Releases (`release-builds/`)**: Local staging directory for production binaries (`AIO-Calender-MK2.apk`, Windows executables). Strictly ignored by `.gitignore` and `.vercelignore`.
 
+## 9. Windows System & Registry Integrity
+- **Zero Registry Modification**: Never modify, add, or delete Windows registry keys (`HKCU\...\Run`, `HKLM`, etc.), system directories, or startup configurations.
+- **No System File Tampering**: All desktop settings must remain strictly in application-local memory or local app storage (`desktop-config.json`).
+- **Registry & Autostart Purge**: The Windows native client strictly does not register autostart keys or alter Windows OS startup configuration. Background persistence is managed exclusively via the in-memory System Tray lifecycle.
+
+

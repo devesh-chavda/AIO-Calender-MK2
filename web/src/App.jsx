@@ -306,34 +306,35 @@ function MainDashboard({ user }) {
   const [desktopSettings, setDesktopSettings] = useState(() => {
     try {
       const saved = localStorage.getItem('aio-desktop-settings');
-      return saved ? JSON.parse(saved) : { minimizeToTray: true, autostart: false };
+      return saved ? JSON.parse(saved) : { minimizeToTray: true };
     } catch {
-      return { minimizeToTray: true, autostart: false };
+      return { minimizeToTray: true };
     }
   });
 
   useEffect(() => {
-    if (isDesktop && window.__TAURI__?.core?.invoke) {
-      window.__TAURI__.core.invoke('get_desktop_settings')
-        .then((res) => {
-          if (res) {
-            setDesktopSettings({
-              minimizeToTray: res.minimize_to_tray ?? true,
-              autostart: res.autostart ?? false,
-            });
-            try {
-              localStorage.setItem('aio-desktop-settings', JSON.stringify({
+    if (isDesktop) {
+      const invoke = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;
+      if (invoke) {
+        invoke('get_desktop_settings')
+          .then((res) => {
+            if (res) {
+              setDesktopSettings({
                 minimizeToTray: res.minimize_to_tray ?? true,
-                autostart: res.autostart ?? false,
-              }));
-            } catch {
-              // ignore
+              });
+              try {
+                localStorage.setItem('aio-desktop-settings', JSON.stringify({
+                  minimizeToTray: res.minimize_to_tray ?? true,
+                }));
+              } catch {
+                // ignore
+              }
             }
-          }
-        })
-        .catch((err) => {
-          console.debug('Desktop settings fetch error:', err);
-        });
+          })
+          .catch((err) => {
+            console.debug('Desktop settings fetch error:', err);
+          });
+      }
     }
   }, []);
 
@@ -345,15 +346,16 @@ function MainDashboard({ user }) {
     } catch {
       // ignore
     }
-    if (isDesktop && window.__TAURI__?.core?.invoke) {
-      try {
-        if (key === 'minimizeToTray') {
-          await window.__TAURI__.core.invoke('set_minimize_to_tray', { enabled: value });
-        } else if (key === 'autostart') {
-          await window.__TAURI__.core.invoke('set_autostart', { enabled: value });
+    if (isDesktop) {
+      const invoke = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;
+      if (invoke) {
+        try {
+          if (key === 'minimizeToTray') {
+            await invoke('set_minimize_to_tray', { enabled: value });
+          }
+        } catch (err) {
+          console.error(`Failed to update desktop setting ${key}:`, err);
         }
-      } catch (err) {
-        console.error(`Failed to update desktop setting ${key}:`, err);
       }
     }
   };
@@ -1152,7 +1154,7 @@ function MainDashboard({ user }) {
                       <span>🖥️ Windows Desktop Preferences</span>
                     </h3>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      Configure background persistence and Windows 10/11 startup behavior.
+                      Configure background persistence and system tray behavior.
                     </p>
                   </div>
 
@@ -1165,19 +1167,6 @@ function MainDashboard({ user }) {
                       type="checkbox" 
                       checked={desktopSettings.minimizeToTray} 
                       onChange={(e) => handleDesktopSettingToggle('minimizeToTray', e.target.checked)} 
-                      className="h-5 w-5 accent-blue-600 cursor-pointer" 
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
-                    <div>
-                      <h4 className="font-semibold text-sm">Launch at Windows Startup</h4>
-                      <p className="text-xs text-gray-500">Automatically start AIO Calender MK2 in the background when Windows boots up.</p>
-                    </div>
-                    <input 
-                      type="checkbox" 
-                      checked={desktopSettings.autostart} 
-                      onChange={(e) => handleDesktopSettingToggle('autostart', e.target.checked)} 
                       className="h-5 w-5 accent-blue-600 cursor-pointer" 
                     />
                   </div>

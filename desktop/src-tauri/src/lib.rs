@@ -7,13 +7,11 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, State, WindowEvent,
 };
-use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_notification::NotificationExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DesktopSettings {
     pub minimize_to_tray: bool,
-    pub autostart: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,14 +26,11 @@ pub struct AppState {
 
 #[tauri::command]
 fn get_desktop_settings(
-    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DesktopSettings, String> {
-    let autostart = app.autolaunch().is_enabled().unwrap_or(false);
     let minimize_to_tray = state.minimize_to_tray.load(Ordering::SeqCst);
     Ok(DesktopSettings {
         minimize_to_tray,
-        autostart,
     })
 }
 
@@ -50,17 +45,6 @@ fn set_minimize_to_tray(
     };
     if let Ok(json) = serde_json::to_string_pretty(&config) {
         let _ = fs::write(&state.config_file, json);
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
-    let autolaunch = app.autolaunch();
-    if enabled {
-        autolaunch.enable().map_err(|e| e.to_string())?;
-    } else {
-        autolaunch.disable().map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -84,10 +68,6 @@ fn send_desktop_notification(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec!["--autostart"]),
-        ))
         .setup(|app| {
             let config_dir = app
                 .path()
@@ -114,23 +94,34 @@ pub fn run() {
             let quit_i = MenuItem::with_id(app, "quit", "Exit Application", true, None::<&str>)?;
             let tray_menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            let mut tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
-                .show_menu_on_left_click(false)
+                .show_menu_on_left_click(false);
+
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+
+            let _tray = tray_builder
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                    match event {
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
                         }
+                        | TrayIconEvent::DoubleClick {
+                            button: MouseButton::Left,
+                            ..
+                        } => {
+                            let app = tray.app_handle();
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        _ => {}
                     }
                 })
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -148,6 +139,11 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -156,13 +152,14 @@ pub fn run() {
                 if state.minimize_to_tray.load(Ordering::SeqCst) {
                     let _ = window.hide();
                     api.prevent_close();
+                } else {
+                    window.app_handle().exit(0);
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
             get_desktop_settings,
             set_minimize_to_tray,
-            set_autostart,
             send_desktop_notification
         ])
         .run(tauri::generate_context!())
