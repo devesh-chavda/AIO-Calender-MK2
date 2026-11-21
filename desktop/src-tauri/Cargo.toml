@@ -1,0 +1,24 @@
+[package]
+name = "aio-calender-mk2-desktop"
+version = "3.0.0"
+description = "AIO Calender MK2 Windows Native Desktop Application"
+authors = ["Devesh"]
+edition = "2021"
+
+[lib]
+name = "aio_calender_mk2_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "aio-calender-mk2"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

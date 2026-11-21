@@ -47,6 +47,7 @@ release-apk/
 release-builds/
 desktop/src-tauri/target/
 target/
+.tools/
 
 # ==============================================================================
 # 3. Dependencies & Web Build Outputs

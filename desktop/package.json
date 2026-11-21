@@ -4,7 +4,10 @@
   "private": true,
   "description": "Native Windows x64 desktop client for AIO Calender MK2",
   "scripts": {
-    "dev": "echo \"Desktop client scaffold placeholder - to be configured in Windows x64 phase\"",
-    "build": "echo \"Desktop client build placeholder - to be configured in Windows x64 phase\""
+    "dev": "call ../.tools/env.cmd tauri dev",
+    "build": "call ../.tools/env.cmd tauri build && node -e \"const fs=require('fs'); fs.copyFileSync('src-tauri/target/release/bundle/nsis/AIO Calender MK2_3.0.0_x64-setup.exe', '../release-builds/AIO-Calender-MK2-Setup.exe'); fs.copyFileSync('src-tauri/target/release/aio-calender-mk2.exe', '../release-builds/AIO-Calender-MK2-Portable.exe'); console.log('Copied binaries to release-builds/');\""
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.6"
   }
 }

@@ -224,6 +224,8 @@ const DEFAULT_NOTIF_SETTINGS = {
   vibrateEnabled: true
 };
 
+const isDesktop = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
+
 function MainDashboard({ user }) {
   // ----------------------------------------
   // ALL HOOKS MUST BE AT THE TOP
@@ -299,6 +301,62 @@ function MainDashboard({ user }) {
 
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const [syncError, setSyncError] = useState(() => (!db ? "Firebase 'db' is not initialized." : null));
+
+  // Desktop Preferences State (Windows Native)
+  const [desktopSettings, setDesktopSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('aio-desktop-settings');
+      return saved ? JSON.parse(saved) : { minimizeToTray: true, autostart: false };
+    } catch {
+      return { minimizeToTray: true, autostart: false };
+    }
+  });
+
+  useEffect(() => {
+    if (isDesktop && window.__TAURI__?.core?.invoke) {
+      window.__TAURI__.core.invoke('get_desktop_settings')
+        .then((res) => {
+          if (res) {
+            setDesktopSettings({
+              minimizeToTray: res.minimize_to_tray ?? true,
+              autostart: res.autostart ?? false,
+            });
+            try {
+              localStorage.setItem('aio-desktop-settings', JSON.stringify({
+                minimizeToTray: res.minimize_to_tray ?? true,
+                autostart: res.autostart ?? false,
+              }));
+            } catch {
+              // ignore
+            }
+          }
+        })
+        .catch((err) => {
+          console.debug('Desktop settings fetch error:', err);
+        });
+    }
+  }, []);
+
+  const handleDesktopSettingToggle = async (key, value) => {
+    const updated = { ...desktopSettings, [key]: value };
+    setDesktopSettings(updated);
+    try {
+      localStorage.setItem('aio-desktop-settings', JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+    if (isDesktop && window.__TAURI__?.core?.invoke) {
+      try {
+        if (key === 'minimizeToTray') {
+          await window.__TAURI__.core.invoke('set_minimize_to_tray', { enabled: value });
+        } else if (key === 'autostart') {
+          await window.__TAURI__.core.invoke('set_autostart', { enabled: value });
+        }
+      } catch (err) {
+        console.error(`Failed to update desktop setting ${key}:`, err);
+      }
+    }
+  };
 
   // Form State
   const [newClass, setNewClass] = useState({
@@ -1085,6 +1143,46 @@ function MainDashboard({ user }) {
                   />
                 </div>
               </div>
+
+              {/* --- WINDOWS DESKTOP PREFERENCES (Rendered only on Desktop) --- */}
+              {isDesktop && (
+                <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-blue-200 dark:border-blue-900/40 space-y-4">
+                  <div className="border-b border-gray-200 dark:border-gray-800 pb-2">
+                    <h3 className="font-bold text-md flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                      <span>🖥️ Windows Desktop Preferences</span>
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Configure background persistence and Windows 10/11 startup behavior.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-sm">Minimize to System Tray on Close</h4>
+                      <p className="text-xs text-gray-500">Keep running in the background when the window is closed to maintain alarms and reminders.</p>
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      checked={desktopSettings.minimizeToTray} 
+                      onChange={(e) => handleDesktopSettingToggle('minimizeToTray', e.target.checked)} 
+                      className="h-5 w-5 accent-blue-600 cursor-pointer" 
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
+                    <div>
+                      <h4 className="font-semibold text-sm">Launch at Windows Startup</h4>
+                      <p className="text-xs text-gray-500">Automatically start AIO Calender MK2 in the background when Windows boots up.</p>
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      checked={desktopSettings.autostart} 
+                      onChange={(e) => handleDesktopSettingToggle('autostart', e.target.checked)} 
+                      className="h-5 w-5 accent-blue-600 cursor-pointer" 
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* --- ADVANCED OPTIONS / SETTINGS --- */}
               <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-3">
