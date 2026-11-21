@@ -33,3 +33,10 @@
 - **v2.0 Bookmark Invariant**: The Git tag `v2.0.0-stable-milestone` and local recovery bundle serve as the permanent bookmark for the verified v2.0 release. If anything goes wrong during refactoring, return to this point immediately.
 - **Codebase Freezing**: Strictly NO further changes to Android `.apk` files (`android/` or `mobile/`) and NO further changes to web files (`src/` or `web/`). Their features and logic are complete, tested, and frozen.
 - **v3.0 Target (Windows x64 Native)**: All future work from this point onwards is strictly confined to organizing files into a modular monorepo structure (`web/`, `mobile/`, `desktop/`, `release-builds/`) and building the native Windows x64 `.exe` application.
+
+## 8. Modular Monorepo Architecture
+- **Web Frontend (`web/`)**: React 19 + Tailwind CSS + Vite web client. Output directory `web/dist/`.
+- **Android Native Client (`mobile/`)**: Capacitor 8 + Android Native Java project in `mobile/android/`. Output APKs signed and packaged via Gradle.
+- **Windows Native Client (`desktop/`)**: Dedicated module for Windows x64 native client.
+- **Local Releases (`release-builds/`)**: Local staging directory for production binaries (`AIO-Calender-MK2.apk`, Windows executables). Strictly ignored by `.gitignore` and `.vercelignore`.
+

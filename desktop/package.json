@@ -1,0 +1,10 @@
+{
+  "name": "aio-calender-mk2-desktop",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Native Windows x64 desktop client for AIO Calender MK2",
+  "scripts": {
+    "dev": "echo \"Desktop client scaffold placeholder - to be configured in Windows x64 phase\"",
+    "build": "echo \"Desktop client build placeholder - to be configured in Windows x64 phase\""
+  }
+}

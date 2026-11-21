@@ -121,42 +121,44 @@ Aggressive battery management software on popular OEM brands (Samsung One UI, Xi
 
 ---
 
-## Project Architecture
+## Project Architecture (Modular Monorepo)
 
-```
+```text
 aio-calender-mk2/
-├── android/                               # Native Android Studio project
-│   ├── app/
-│   │   ├── build.gradle                  # App-level Gradle (SDK 24-36, v1-v4 signing)
-│   │   └── src/main/
-│   │       ├── AndroidManifest.xml       # Permissions, receivers & activity declaration
-│   │       └── java/com/aiocalender/
-│   │           ├── AIOAlarmPlugin.java   # Capacitor-to-Java native bridge
-│   │           ├── AIOAlarmReceiver.java # Broadcast receiver for alarm trigger
-│   │           ├── AIOAlarmScheduler.java# AlarmManager.setAlarmClock scheduler
-│   │           ├── AIOAlarmStorage.java  # Persistent JSON disk storage for alarms
-│   │           ├── AIOBootReceiver.java   # Direct-boot aware reboot listener
-│   │           └── MainActivity.java     # Main Capacitor entry point
-│   ├── build.gradle                      # Root project Gradle configuration
-│   └── variables.gradle                  # Global SDK versions (minSdk 24, compileSdk 36)
-├── public/                               # Static web assets & icons
-├── scripts/
-│   └── patch-google-auth.cjs             # Build patch for Capacitor Google Auth plugin
-├── src/
-│   ├── App.css                           # Application base stylesheet
-│   ├── App.jsx                           # Primary application dashboard & routing
-│   ├── ErrorBoundary.jsx                 # Crash resilience wrapper
-│   ├── firebase.js                       # Firebase app initialization & error handlers
-│   ├── index.css                         # Tailwind CSS imports & theme definitions
-│   ├── main.jsx                          # React root mounting
-│   └── notifications.js                  # Notification scheduler, OEM deep links & bridge
-├── .env.example                          # Environment variable template
-├── .gitignore                            # Secrets & build artifact exclusion
-├── capacitor.config.json                 # Capacitor app & plugin configuration
-├── firestore.rules                       # Production Firestore security rules
-├── package.json                          # Dependencies & build scripts
-├── vercel.json                           # Vercel deployment, rewrite & domain redirect rules
-└── vite.config.js                        # Vite configuration
+├── web/                                 # 🌐 Web Frontend & Vercel Target
+│   ├── src/                             # React 19 components & UI (FROZEN)
+│   ├── public/                          # Web assets & icons
+│   ├── index.html                       # Web entry point
+│   ├── vite.config.js                   # Vite bundler config
+│   ├── eslint.config.js                 # ESLint rules
+│   ├── package.json                     # Web-specific dependencies & scripts
+│   └── vercel.json                      # Vercel routing & edge rewrites
+│
+├── mobile/                              # 📱 Android Native Project (FROZEN)
+│   ├── android/                         # Full native Android Studio project (SDK 24-36)
+│   │   ├── app/                         # App module, Java sources, manifests
+│   │   ├── build.gradle                 # Native Gradle build scripts
+│   │   └── variables.gradle             # Global SDK versions (minSdk 24, compileSdk 36)
+│   ├── assets/                          # App icon & splash screen sources
+│   ├── capacitor.config.json            # Capacitor bridge config (points to ../web/dist)
+│   ├── package.json                     # Mobile tooling dependencies & scripts
+│   └── scripts/
+│       └── patch-google-auth.cjs        # Postinstall patch for Capacitor Google Auth
+│
+├── desktop/                             # 💻 Windows Native Project (v3.0 Target)
+│   ├── README.md                        # Architecture documentation for Windows client
+│   └── package.json                     # Desktop run & build scripts
+│
+├── release-builds/                      # 📦 Local Binary Staging (GIT-IGNORED)
+│   ├── AIO-Calender-MK2.apk             # Android Release APK (v2.0)
+│   └── AIO-Calender-MK2-Setup.exe       # Windows Native x64 Executable (v3.0)
+│
+├── .gitignore                           # Strict ignore rules protecting secrets & binaries
+├── .vercelignore                        # Strict isolation for Vercel deployment
+├── GEMINI.md                            # Project invariants & guardrails
+├── package.json                         # Root monorepo workspace & convenience scripts
+├── vercel.json                          # Root Vercel build & domain routing configuration
+└── README.md                            # Comprehensive production documentation
 ```
 
 ---
@@ -167,14 +169,14 @@ aio-calender-mk2/
 - **Node.js**: v20 LTS or higher
 - **Package Manager**: `npm` (v10+)
 - **Android Studio** (for mobile development): Hedgehog / Ladybug or newer with Android SDK 35/36 installed
-- **Java Development Kit**: JDK 17 or JDK 21
+- **Java Development Kit**: JDK 17 or JDK 21 (or Android Studio JBR)
 
 ### Environment Configuration
-Copy the example environment template:
+Copy the example environment template into `web/`:
 ```bash
-cp .env.example .env
+cp .env.example web/.env
 ```
-Populate `.env` with your Firebase project credentials:
+Populate `web/.env` with your Firebase project credentials:
 ```env
 VITE_FIREBASE_API_KEY=your_api_key
 VITE_FIREBASE_AUTH_DOMAIN=aio-calender-mk2.firebaseapp.com
@@ -190,15 +192,17 @@ VITE_GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id.apps.googleusercontent.c
 Start the local development server:
 ```bash
 npm run dev
+# or: npm --prefix web run dev
 ```
 Navigate to `http://localhost:5173` in your browser.
 
 ### Building for Production (Web)
 Run the Vite production build:
 ```bash
-npm run build
+npm run build:web
+# or: npm --prefix web run build
 ```
-The optimized web distribution will be emitted to `dist/`.
+The optimized web distribution will be emitted to `web/dist/`.
 
 ---
 
@@ -207,16 +211,17 @@ The optimized web distribution will be emitted to `dist/`.
 ### Capacitor Sync
 Export web assets to the native Android platform:
 ```bash
-npm run build
+npm run build:web
+cd mobile
 npx cap sync android
 ```
 
 ### Keystore & Release Signing
 MK2 uses a dedicated release keystore with SHA-256 certificate fingerprints registered in Google Cloud Console and Firebase:
-- Keystore file: `android/app/aio-calender-mk2.keystore` *(git-ignored)*
-- Configuration: `android/keystore.properties` *(git-ignored)*
+- Keystore file: `mobile/android/app/aio-calender-mk2.keystore` *(git-ignored)*
+- Configuration: `mobile/android/keystore.properties` *(git-ignored)*
 
-Verify your `android/keystore.properties`:
+Verify your `mobile/android/keystore.properties`:
 ```properties
 storePassword=YOUR_KEYSTORE_PASSWORD
 keyPassword=YOUR_KEY_PASSWORD
@@ -225,13 +230,19 @@ storeFile=aio-calender-mk2.keystore
 ```
 
 ### Building the Signed Release APK
-From the `android/` directory:
+From the root monorepo directory:
 ```bash
-cd android
+npm run build:mobile
+```
+Or directly from `mobile/android`:
+```bash
+cd mobile/android
 ./gradlew assembleRelease
 ```
 The production signed APK will be generated at:
-`android/app/build/outputs/apk/release/app-release.apk`
+`mobile/android/app/build/outputs/apk/release/app-release.apk`
+and staged for distribution at:
+`release-builds/AIO-Calender-MK2.apk`
 
 ---
 

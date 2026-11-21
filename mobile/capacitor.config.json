@@ -1,7 +1,7 @@
 {
   "appId": "com.aiocalendermk2",
   "appName": "AIO Calender MK2",
-  "webDir": "dist",
+  "webDir": "../web/dist",
   "plugins": {
     "GoogleAuth": {
       "scopes": ["profile", "email"],

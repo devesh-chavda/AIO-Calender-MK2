@@ -36,9 +36,17 @@ local.properties
 android/.gradle/
 android/app/build/
 android/build/
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
 *.apk
 *.aab
+*.exe
+*.msi
 release-apk/
+release-builds/
+desktop/src-tauri/target/
+target/
 
 # ==============================================================================
 # 3. Dependencies & Web Build Outputs

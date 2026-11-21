@@ -1,14 +1,20 @@
 # ==============================================================================
 # Vercel Deployment Ignore Rules - AIO Calender MK2
-# Prevents sensitive local artifacts, native Android code, and archives
+# Prevents sensitive local artifacts, native Android/desktop code, and archives
 # from ever being uploaded or exposed to Vercel builds.
 # ==============================================================================
 
-# Native Android source, builds, keystores & APKs
+# Native Android and Desktop projects, builds & binaries
 android/
+mobile/
+desktop/
+release-apk/
+release-builds/
 *.apk
 *.aab
-release-apk/
+*.exe
+*.msi
+target/
 
 # Local backups, bundles & recovery archives
 *.bundle
