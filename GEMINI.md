@@ -28,3 +28,8 @@
 ## 6. Milestone Backup & Point of Return
 - **Tagged Releases**: Create annotated Git tags (`git tag -a`) for verified milestones.
 - **Local Recovery**: Maintain git-ignored backup bundles/archives as reliable points of return before major codebase refactors.
+
+## 7. v2.0 Codebase Freeze & v3.0 Scope
+- **v2.0 Bookmark Invariant**: The Git tag `v2.0.0-stable-milestone` and local recovery bundle serve as the permanent bookmark for the verified v2.0 release. If anything goes wrong during refactoring, return to this point immediately.
+- **Codebase Freezing**: Strictly NO further changes to Android `.apk` files (`android/` or `mobile/`) and NO further changes to web files (`src/` or `web/`). Their features and logic are complete, tested, and frozen.
+- **v3.0 Target (Windows x64 Native)**: All future work from this point onwards is strictly confined to organizing files into a modular monorepo structure (`web/`, `mobile/`, `desktop/`, `release-builds/`) and building the native Windows x64 `.exe` application.
