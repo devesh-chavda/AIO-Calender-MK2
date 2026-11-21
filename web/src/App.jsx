@@ -183,7 +183,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex flex-col items-center justify-center p-4 transition-colors">
         <div className="bg-white dark:bg-[#121215] p-8 md:p-12 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 text-center max-w-md w-full">
-          <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 dark:from-red-500 dark:via-purple-500 dark:to-indigo-400 mb-2 select-none">
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 dark:from-red-500 dark:via-purple-500 dark:to-indigo-400 mb-2 select-none">
             AIO Calender MK2
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mb-8 font-medium">Sign in to sync your schedule across all devices.</p>
@@ -644,7 +644,7 @@ function MainDashboard({ user }) {
       <header className="mb-6 flex flex-col xl:flex-row justify-between xl:items-center gap-4 shrink-0 border-b border-gray-200 dark:border-gray-800/80 pb-4">
         <div className="flex justify-between items-center w-full xl:w-auto">
           <div className="flex items-center gap-2">
-            <h1 className="text-[1.4rem] xs:text-[1.65rem] sm:text-3xl font-normal tracking-tight whitespace-nowrap select-none text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 dark:from-red-500 dark:via-purple-500 dark:to-indigo-400">
+            <h1 className="text-[1.4rem] xs:text-[1.65rem] sm:text-3xl font-semibold tracking-tight whitespace-nowrap select-none text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 dark:from-red-500 dark:via-purple-500 dark:to-indigo-400">
               AIO Calender MK2
             </h1>
           </div>
@@ -1066,7 +1066,7 @@ function MainDashboard({ user }) {
       {activeTab === 'settings' && (
         <div className="flex-1 space-y-6 animate-in fade-in duration-300 max-w-4xl">
           <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
-            <h2 className="text-xl font-semibold mb-1 dark:text-red-400">Settings & Notifs</h2>
+            <h2 className="text-xl font-semibold mb-1 dark:text-red-400">Notification Preferences</h2>
             <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Configure lecture reminders, deadline alerts, and device background delivery settings.</p>
             <div className="space-y-6">
               <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
@@ -1188,18 +1188,8 @@ function MainDashboard({ user }) {
                       System battery optimization and OEM device management.
                     </p>
                   </div>
-                  <div className="flex flex-col items-center justify-center text-[11px] font-semibold px-2.5 py-1.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 group-hover:bg-gray-300 dark:group-hover:bg-gray-700 transition-colors leading-tight shrink-0 select-none text-center">
-                    {showAdvancedTuning ? (
-                      <>
-                        <span className="whitespace-nowrap">Hide</span>
-                        <span className="whitespace-nowrap">Options ▲</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="whitespace-nowrap">Advanced</span>
-                        <span className="whitespace-nowrap">Options ▼</span>
-                      </>
-                    )}
+                  <div className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 group-hover:bg-gray-300 dark:group-hover:bg-gray-700 transition-colors shrink-0 whitespace-nowrap">
+                    <span>{showAdvancedTuning ? 'Hide Options\u00A0▲' : 'Advanced Options\u00A0▼'}</span>
                   </div>
                 </button>
 
