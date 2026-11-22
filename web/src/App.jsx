@@ -130,16 +130,24 @@ export default function App() {
         const credential = GoogleAuthProvider.credential(idToken, googleUser?.authentication?.accessToken || null);
         await signInWithCredential(auth, credential);
       } else {
-        // Web / Vercel / AI Studio: Popup with redirect fallback
+        // Desktop / offline origin transition
+        if (typeof window !== 'undefined' && window.location.hostname === 'tauri.localhost') {
+          if (!navigator.onLine) {
+            setLoginError("Internet connection is required to sign in with Google. Please check your connection and try again.");
+            return;
+          }
+          window.location.href = 'https://aio-calender-mk2.vercel.app/?action=login';
+          return;
+        }
+
+        // Web / Vercel / AI Studio / Desktop: Popup with redirect fallback
         try {
           await signInWithPopup(auth, googleProvider);
         } catch (popupErr) {
-          if (
-            popupErr.code === 'auth/popup-blocked' ||
-            popupErr.code === 'auth/cancelled-popup-request' ||
-            popupErr.code === 'auth/operation-not-supported-in-this-environment'
-          ) {
-            console.warn("Sign-in popup blocked or unsupported, falling back to redirect...");
+          if (popupErr.code === 'auth/popup-closed-by-user') {
+            console.log("User closed sign-in popup.");
+          } else {
+            console.warn("Sign-in popup notice, falling back to redirect:", popupErr?.code || popupErr);
             try {
               sessionStorage.setItem('aio_auth_redirect_pending', 'true');
               await signInWithRedirect(auth, googleProvider);
@@ -147,10 +155,6 @@ export default function App() {
               sessionStorage.removeItem('aio_auth_redirect_pending');
               throw redirectErr;
             }
-          } else if (popupErr.code === 'auth/popup-closed-by-user') {
-            console.log("User closed sign-in popup.");
-          } else {
-            throw popupErr;
           }
         }
       }
@@ -159,6 +163,14 @@ export default function App() {
       const code = error?.code || error?.statusCode;
       const rawMsg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
       if (code === 'auth/unauthorized-domain') {
+        if (typeof window !== 'undefined' && window.location.hostname === 'tauri.localhost') {
+          if (!navigator.onLine) {
+            setLoginError("Internet connection is required to sign in with Google. Please check your connection and try again.");
+            return;
+          }
+          window.location.href = 'https://aio-calender-mk2.vercel.app/?action=login';
+          return;
+        }
         setLoginError(`Domain "${window.location.hostname}" is not authorized. Add it to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
       } else if (code === 'auth/popup-blocked') {
         setLoginError("Pop-up blocked. Please allow pop-ups for this site or try again.");
@@ -170,6 +182,21 @@ export default function App() {
       }
     }
   };
+
+  useEffect(() => {
+    if (loadingAuth || user) return;
+    if (typeof window !== 'undefined' && window.location.search) {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get('action') === 'login') {
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        const timer = setTimeout(() => {
+          handleLogin();
+        }, 0);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [loadingAuth, user]);
 
   if (loadingAuth) {
     return (

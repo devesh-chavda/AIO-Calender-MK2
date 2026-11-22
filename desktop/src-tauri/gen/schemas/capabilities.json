@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Permissions for main window","local":true,"windows":["main"],"permissions":["core:default","notification:default"]}}
+{"default":{"identifier":"default","description":"Permissions for main window","remote":{"urls":["https://aio-calender-mk2.vercel.app/*","https://aio-calander-mk2.vercel.app/*"]},"local":true,"windows":["main","*"],"permissions":["core:default","notification:default"]}}

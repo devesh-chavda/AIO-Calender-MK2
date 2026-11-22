@@ -2,7 +2,13 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permissions for main window",
-  "windows": ["main"],
+  "windows": ["main", "*"],
+  "remote": {
+    "urls": [
+      "https://aio-calender-mk2.vercel.app/*",
+      "https://aio-calander-mk2.vercel.app/*"
+    ]
+  },
   "permissions": [
     "core:default",
     "notification:default"

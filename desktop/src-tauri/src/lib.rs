@@ -1,4 +1,5 @@
 use std::fs;
+use std::net::ToSocketAddrs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
@@ -91,8 +92,9 @@ pub fn run() {
             });
 
             let show_i = MenuItem::with_id(app, "show", "Open AIO Calender MK2", true, None::<&str>)?;
+            let reload_i = MenuItem::with_id(app, "reload", "Reload / Back to App", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Exit Application", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+            let tray_menu = Menu::with_items(app, &[&show_i, &reload_i, &quit_i])?;
 
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&tray_menu)
@@ -132,6 +134,14 @@ pub fn run() {
                             let _ = window.set_focus();
                         }
                     }
+                    "reload" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            let _ = window.eval("window.location.href = 'https://aio-calender-mk2.vercel.app'");
+                        }
+                    }
                     "quit" => {
                         app.exit(0);
                     }
@@ -140,6 +150,20 @@ pub fn run() {
                 .build(app)?;
 
             if let Some(window) = app.get_webview_window("main") {
+                // If offline on launch, gracefully fall back to local bundled assets
+                let is_online = "aio-calender-mk2.vercel.app:443"
+                    .to_socket_addrs()
+                    .ok()
+                    .and_then(|mut addrs| addrs.next())
+                    .map(|addr| std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(1500)).is_ok())
+                    .unwrap_or(false);
+
+                if !is_online {
+                    if let Ok(local_url) = "http://tauri.localhost/index.html".parse::<tauri::Url>() {
+                        let _ = window.navigate(local_url);
+                    }
+                }
+
                 let _ = window.show();
                 let _ = window.set_focus();
             }
