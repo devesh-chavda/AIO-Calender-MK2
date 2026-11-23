@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIO Calender MK2 - Desktop Authorization</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background-color: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 1.5rem;
+      padding: 2.5rem 2rem;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .brand-title {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      background: linear-gradient(to right, #ef4444, #a855f7, #6366f1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+      user-select: none;
+    }
+    .subtitle {
+      color: #94a3b8;
+      font-size: 0.925rem;
+      line-height: 1.5;
+      margin-bottom: 2rem;
+    }
+    .btn-google {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      background-color: #ffffff;
+      color: #0f172a;
+      border: none;
+      border-radius: 0.875rem;
+      padding: 0.875rem 1.25rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    .btn-google:hover:not(:disabled) {
+      background-color: #f1f5f9;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 15px -3px rgba(0, 0, 0, 0.3);
+    }
+    .btn-google:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .google-icon {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+    .status-box {
+      margin-top: 1.5rem;
+      padding: 0.875rem 1rem;
+      border-radius: 0.75rem;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      display: none;
+    }
+    .status-info {
+      display: block;
+      background-color: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+    }
+    .status-success {
+      display: block;
+      background-color: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: #86efac;
+    }
+    .status-error {
+      display: block;
+      background-color: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+    .status-warning {
+      display: block;
+      background-color: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fcd34d;
+    }
+    .fallback-link {
+      display: inline-block;
+      margin-top: 1rem;
+      color: #60a5fa;
+      text-decoration: underline;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .footer-text {
+      margin-top: 2rem;
+      color: #64748b;
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 class="brand-title">AIO Calender MK2</h1>
+    <p class="subtitle" id="subtitle-text">Sign in with your Google account to authorize the Windows desktop app.</p>
+
+    <button id="signin-btn" class="btn-google">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" class="google-icon" id="google-icon">
+      <span id="btn-text">Continue with Google</span>
+    </button>
+
+    <div id="status-box" class="status-box"></div>
+    <div id="fallback-container"></div>
+
+    <p class="footer-text">RFC 8252 Secure Loopback Authentication &bull; ROG Station</p>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js';
+    import { getAuth, signInWithPopup, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js';
+
+    const decodeIdentifier = (str) => {
+      try {
+        return atob(str);
+      } catch {
+        return '';
+      }
+    };
+
+    const firebaseConfig = {
+      apiKey: decodeIdentifier('QUl6YVN5QnI3R180dmdSSmRnRy1vRnhmMUJXLTFRSktndHRyd0k0'),
+      authDomain: 'aio-calender-mk2.firebaseapp.com',
+      projectId: 'aio-calender-mk2',
+      storageBucket: 'aio-calender-mk2.firebasestorage.app',
+      messagingSenderId: '20006102155',
+      appId: decodeIdentifier('MToyMDAwNjEwMjE1NTp3ZWI6NWExMWQwYzdmMjFjZDIzYTAyMjA4ZQ==')
+    };
+
+    const params = new URLSearchParams(window.location.search);
+    const port = params.get('port');
+    const state = params.get('state');
+
+    const statusBox = document.getElementById('status-box');
+    const signinBtn = document.getElementById('signin-btn');
+    const btnText = document.getElementById('btn-text');
+    const fallbackContainer = document.getElementById('fallback-container');
+    const subtitleText = document.getElementById('subtitle-text');
+
+    function setStatus(message, type) {
+      statusBox.className = 'status-box status-' + type;
+      statusBox.textContent = message;
+    }
+
+    if (!port || !state) {
+      subtitleText.textContent = 'This page authorizes the AIO Calender MK2 desktop app.';
+      signinBtn.style.display = 'none';
+      setStatus('Invalid authorization request. Please initiate sign-in from the AIO Calender MK2 desktop application.', 'warning');
+      const webLink = document.createElement('a');
+      webLink.href = '/';
+      webLink.className = 'fallback-link';
+      webLink.textContent = 'Open AIO Calender MK2 Web';
+      fallbackContainer.appendChild(webLink);
+    } else {
+      let app, auth, provider;
+      try {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+      } catch (err) {
+        setStatus('Failed to initialize Firebase Auth: ' + err.message, 'error');
+      }
+
+      async function handleSignIn() {
+        if (!auth) return;
+        signinBtn.disabled = true;
+        btnText.textContent = 'Connecting to Google...';
+        setStatus('Please complete sign-in in the Google account picker...', 'info');
+
+        try {
+          const result = await signInWithPopup(auth, provider);
+          const credential = GoogleAuthProvider.credentialFromResult(result);
+          const idToken = credential?.idToken || result?._tokenResponse?.oauthIdToken || result?._tokenResponse?.idToken;
+          const accessToken = credential?.accessToken || result?._tokenResponse?.oauthAccessToken || '';
+
+          if (!idToken) {
+            throw new Error('Google sign-in succeeded, but no ID token was returned.');
+          }
+
+          btnText.textContent = 'Sign-in Verified!';
+          setStatus('Authentication successful! Transferring tokens to desktop application...', 'success');
+
+          const callbackUrl = `http://127.0.0.1:${port}/callback?idToken=${encodeURIComponent(idToken)}&accessToken=${encodeURIComponent(accessToken)}&state=${encodeURIComponent(state)}`;
+          
+          const manualLink = document.createElement('a');
+          manualLink.href = callbackUrl;
+          manualLink.className = 'fallback-link';
+          manualLink.textContent = 'Click here if you are not automatically redirected';
+          fallbackContainer.innerHTML = '';
+          fallbackContainer.appendChild(manualLink);
+
+          // Redirect to desktop loopback server
+          window.location.href = callbackUrl;
+        } catch (error) {
+          console.error('Sign-in error:', error);
+          signinBtn.disabled = false;
+          btnText.textContent = 'Continue with Google';
+          if (error.code === 'auth/popup-closed-by-user') {
+            setStatus('Sign-in window closed. Click the button above to try again.', 'warning');
+          } else {
+            setStatus('Sign-in error: ' + (error.message || error.code), 'error');
+          }
+        }
+      }
+
+      signinBtn.addEventListener('click', handleSignIn);
+
+      // Attempt automatic sign-in trigger on page load
+      setTimeout(() => {
+        handleSignIn();
+      }, 300);
+    }
+  </script>
+</body>
+</html>

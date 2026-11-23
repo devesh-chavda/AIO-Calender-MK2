@@ -12,14 +12,13 @@
       {
         "label": "main",
         "title": "AIO Calender MK2",
-        "url": "https://aio-calender-mk2.vercel.app",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "visible": false,
+        "visible": true,
         "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
       }
     ],

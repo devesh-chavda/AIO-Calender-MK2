@@ -20,6 +20,8 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
+const isDesktop = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__);
+
 // ==========================================
 // 1. AUTHENTICATION WRAPPER
 // ==========================================
@@ -27,6 +29,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(() => Boolean(auth));
   const [loginError, setLoginError] = useState(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
     if (localStorage.getItem('aio-theme') === 'dark') {
@@ -105,6 +108,7 @@ export default function App() {
 
   const handleLogin = async () => {
     setLoginError(null);
+    setIsLoggingIn(true);
     try {
       if (!auth || !firebaseConfig.apiKey) {
         throw new Error("Firebase authentication is unavailable. Please verify configuration.");
@@ -129,18 +133,22 @@ export default function App() {
         }
         const credential = GoogleAuthProvider.credential(idToken, googleUser?.authentication?.accessToken || null);
         await signInWithCredential(auth, credential);
-      } else {
-        // Desktop / offline origin transition
-        if (typeof window !== 'undefined' && window.location.hostname === 'tauri.localhost') {
-          if (!navigator.onLine) {
-            setLoginError("Internet connection is required to sign in with Google. Please check your connection and try again.");
-            return;
-          }
-          window.location.href = 'https://aio-calender-mk2.vercel.app/?action=login';
-          return;
+      } else if (isDesktop) {
+        // Industry-standard RFC 8252 Loopback OAuth for Windows Desktop
+        const invoke = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;
+        if (!invoke) {
+          throw new Error("Desktop native bridge is unavailable.");
         }
-
-        // Web / Vercel / AI Studio / Desktop: Popup with redirect fallback
+        const tokens = await invoke('start_system_browser_auth');
+        const idToken = tokens?.id_token || tokens?.idToken;
+        const accessToken = tokens?.access_token || tokens?.accessToken || null;
+        if (!idToken) {
+          throw new Error("Did not receive an ID token from desktop authentication.");
+        }
+        const credential = GoogleAuthProvider.credential(idToken, accessToken);
+        await signInWithCredential(auth, credential);
+      } else {
+        // Web / Vercel browser: Popup with redirect fallback
         try {
           await signInWithPopup(auth, googleProvider);
         } catch (popupErr) {
@@ -163,14 +171,6 @@ export default function App() {
       const code = error?.code || error?.statusCode;
       const rawMsg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
       if (code === 'auth/unauthorized-domain') {
-        if (typeof window !== 'undefined' && window.location.hostname === 'tauri.localhost') {
-          if (!navigator.onLine) {
-            setLoginError("Internet connection is required to sign in with Google. Please check your connection and try again.");
-            return;
-          }
-          window.location.href = 'https://aio-calender-mk2.vercel.app/?action=login';
-          return;
-        }
         setLoginError(`Domain "${window.location.hostname}" is not authorized. Add it to Firebase Console -> Authentication -> Settings -> Authorized Domains.`);
       } else if (code === 'auth/popup-blocked') {
         setLoginError("Pop-up blocked. Please allow pop-ups for this site or try again.");
@@ -180,6 +180,8 @@ export default function App() {
         const displayCode = code && !rawMsg.includes(String(code)) ? ` [Code: ${code}]` : '';
         setLoginError(`${rawMsg}${displayCode}`);
       }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -226,9 +228,10 @@ export default function App() {
           )}
           <button 
             onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-white dark:bg-[#1a1a20] border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#25252b] text-gray-800 dark:text-gray-200 py-3.5 px-4 rounded-xl font-bold transition-all shadow-sm cursor-pointer">
+            disabled={isLoggingIn}
+            className="w-full flex items-center justify-center gap-3 bg-white dark:bg-[#1a1a20] border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#25252b] text-gray-800 dark:text-gray-200 py-3.5 px-4 rounded-xl font-bold transition-all shadow-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed">
             <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" className="w-5 h-5" />
-            Continue with Google
+            {isLoggingIn ? 'Waiting for browser sign-in...' : 'Continue with Google'}
           </button>
         </div>
       </div>
@@ -250,8 +253,6 @@ const DEFAULT_NOTIF_SETTINGS = {
   taskRepeatFrequency: 'daily',
   vibrateEnabled: true
 };
-
-const isDesktop = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
 
 function MainDashboard({ user }) {
   // ----------------------------------------

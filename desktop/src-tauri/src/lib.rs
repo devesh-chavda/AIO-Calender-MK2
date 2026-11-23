@@ -1,5 +1,5 @@
 use std::fs;
-use std::net::ToSocketAddrs;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,340 @@ struct SavedConfig {
 pub struct AppState {
     pub minimize_to_tray: AtomicBool,
     pub config_file: PathBuf,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuthTokens {
+    pub id_token: String,
+    pub access_token: Option<String>,
+}
+
+#[cfg(windows)]
+#[link(name = "bcrypt")]
+extern "system" {
+    fn BCryptGenRandom(
+        h_algorithm: *mut std::ffi::c_void,
+        pb_buffer: *mut u8,
+        cb_buffer: u32,
+        dw_flags: u32,
+    ) -> i32;
+}
+
+fn generate_csrf_state() -> String {
+    #[cfg(windows)]
+    {
+        let mut bytes = [0u8; 16];
+        let status = unsafe {
+            BCryptGenRandom(
+                std::ptr::null_mut(),
+                bytes.as_mut_ptr(),
+                bytes.len() as u32,
+                0x00000002, // BCRYPT_USE_SYSTEM_PREFERRED_RNG
+            )
+        };
+        if status == 0 {
+            return bytes.iter().map(|b| format!("{:02x}", b)).collect();
+        }
+    }
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{:032x}", nanos)
+}
+
+fn url_decode(input: &str) -> String {
+    let mut result = Vec::new();
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16) {
+                result.push(byte);
+                i += 3;
+                continue;
+            }
+        } else if bytes[i] == b'+' {
+            result.push(b' ');
+            i += 1;
+            continue;
+        }
+        result.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&result).into_owned()
+}
+
+#[tauri::command]
+async fn start_system_browser_auth(app: tauri::AppHandle) -> Result<AuthTokens, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| format!("Failed to bind local loopback listener: {}", e))?;
+        let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+        let state = generate_csrf_state();
+
+        let auth_url = format!(
+            "https://aio-calender-mk2.vercel.app/desktop-auth.html?port={}&state={}",
+            port, state
+        );
+
+        // Open system default browser
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let _ = std::process::Command::new("rundll32")
+                .args(["url.dll,FileProtocolHandler", &auth_url])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new("xdg-open").arg(&auth_url).spawn();
+        }
+
+        listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+        let start_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(120);
+
+        let mut received_tokens: Option<AuthTokens> = None;
+
+        while start_time.elapsed() < timeout {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+                    let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(5)));
+
+                    let mut buffer = [0u8; 16384];
+                    let mut total_read = 0;
+                    while total_read < buffer.len() {
+                        match stream.read(&mut buffer[total_read..]) {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                total_read += n;
+                                if buffer[..total_read].windows(4).any(|w| w == b"\r\n\r\n") {
+                                    break;
+                                }
+                            }
+                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {
+                                break;
+                            }
+                            Err(_) => break,
+                        }
+                    }
+
+                    let request_str = String::from_utf8_lossy(&buffer[..total_read]);
+                    let first_line = request_str.lines().next().unwrap_or("");
+                    let parts: Vec<&str> = first_line.split_whitespace().collect();
+                    if parts.len() < 2 {
+                        continue;
+                    }
+                    let path = parts[1];
+
+                    // Favicon requests
+                    if path.starts_with("/favicon") {
+                        let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        let _ = stream.write_all(resp.as_bytes());
+                        let _ = stream.flush();
+                        continue;
+                    }
+
+                    if !path.starts_with("/callback") {
+                        let resp = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        let _ = stream.write_all(resp.as_bytes());
+                        let _ = stream.flush();
+                        continue;
+                    }
+
+                    // Parse query parameters
+                    let query_str = path.split_once('?').map(|x| x.1).unwrap_or("");
+                    let mut param_state = None;
+                    let mut param_id_token = None;
+                    let mut param_access_token = None;
+                    let mut param_error = None;
+
+                    for pair in query_str.split('&') {
+                        if pair.is_empty() { continue; }
+                        let (k, v) = match pair.split_once('=') {
+                            Some((k, v)) => (k, v),
+                            None => (pair, ""),
+                        };
+                        let val = url_decode(v);
+                        match k {
+                            "state" => param_state = Some(val),
+                            "idToken" | "id_token" => param_id_token = Some(val),
+                            "accessToken" | "access_token" => param_access_token = Some(val),
+                            "error" => param_error = Some(val),
+                            _ => {}
+                        }
+                    }
+
+                    // Anti-CSRF verification
+                    if param_state.as_deref() != Some(&state) {
+                        let body = "<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0f172a;color:#f87171;text-align:center;padding:50px;'><h2>Security Error</h2><p>CSRF state parameter mismatch. Authorization rejected.</p></body></html>";
+                        let resp = format!(
+                            "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.as_bytes().len(),
+                            body
+                        );
+                        let _ = stream.write_all(resp.as_bytes());
+                        let _ = stream.flush();
+                        return Err("CSRF state token mismatch".to_string());
+                    }
+
+                    if let Some(err) = param_error {
+                        let body = format!("<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0f172a;color:#f87171;text-align:center;padding:50px;'><h2>Authentication Error</h2><p>{}</p></body></html>", err);
+                        let resp = format!(
+                            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.as_bytes().len(),
+                            body
+                        );
+                        let _ = stream.write_all(resp.as_bytes());
+                        let _ = stream.flush();
+                        return Err(format!("Browser authentication error: {}", err));
+                    }
+
+                    let id_token = match param_id_token {
+                        Some(tok) if !tok.is_empty() => tok,
+                        _ => {
+                            let body = "<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0f172a;color:#f87171;text-align:center;padding:50px;'><h2>Missing Token</h2><p>No ID token received from sign-in.</p></body></html>";
+                            let resp = format!(
+                                "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                body.as_bytes().len(),
+                                body
+                            );
+                            let _ = stream.write_all(resp.as_bytes());
+                            let _ = stream.flush();
+                            return Err("Missing idToken in callback".to_string());
+                        }
+                    };
+
+                    let body = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIO Calender MK2 - Sign-in Complete</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 1.25rem;
+      padding: 2.5rem 2rem;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .icon-wrap {
+      width: 4rem;
+      height: 4rem;
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem auto;
+      color: #4ade80;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.5rem;
+      color: #ffffff;
+    }
+    p {
+      color: #94a3b8;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin-bottom: 1.75rem;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.4rem 0.85rem;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6 9 17l-5-5"/>
+      </svg>
+    </div>
+    <h1>Sign-in Successful!</h1>
+    <p>You have authenticated with AIO Calender MK2. You may now close this browser tab and return to the application.</p>
+    <div class="badge">
+      <span>&#10003; Return to AIO Calender MK2</span>
+    </div>
+  </div>
+  <script>
+    setTimeout(() => {
+      try { window.close(); } catch (e) {}
+    }, 1200);
+  </script>
+</body>
+</html>"#;
+
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.as_bytes().len(),
+                        body
+                    );
+                    let _ = stream.write_all(resp.as_bytes());
+                    let _ = stream.flush();
+
+                    // Restore & focus main desktop window
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.unminimize();
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+
+                    received_tokens = Some(AuthTokens {
+                        id_token,
+                        access_token: param_access_token,
+                    });
+                    break;
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                Err(e) => {
+                    return Err(format!("Socket accept error: {}", e));
+                }
+            }
+        }
+
+        match received_tokens {
+            Some(tokens) => Ok(tokens),
+            None => Err("Sign-in timed out after 120 seconds. Please try again.".to_string()),
+        }
+    })
+    .await
+    .map_err(|e| format!("Authentication task failed: {}", e))?
 }
 
 #[tauri::command]
@@ -139,7 +473,7 @@ pub fn run() {
                             let _ = window.unminimize();
                             let _ = window.show();
                             let _ = window.set_focus();
-                            let _ = window.eval("window.location.href = 'https://aio-calender-mk2.vercel.app'");
+                            let _ = window.eval("window.location.reload()");
                         }
                     }
                     "quit" => {
@@ -150,20 +484,6 @@ pub fn run() {
                 .build(app)?;
 
             if let Some(window) = app.get_webview_window("main") {
-                // If offline on launch, gracefully fall back to local bundled assets
-                let is_online = "aio-calender-mk2.vercel.app:443"
-                    .to_socket_addrs()
-                    .ok()
-                    .and_then(|mut addrs| addrs.next())
-                    .map(|addr| std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(1500)).is_ok())
-                    .unwrap_or(false);
-
-                if !is_online {
-                    if let Ok(local_url) = "http://tauri.localhost/index.html".parse::<tauri::Url>() {
-                        let _ = window.navigate(local_url);
-                    }
-                }
-
                 let _ = window.show();
                 let _ = window.set_focus();
             }
@@ -184,7 +504,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_desktop_settings,
             set_minimize_to_tray,
-            send_desktop_notification
+            send_desktop_notification,
+            start_system_browser_auth
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
