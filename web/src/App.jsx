@@ -21,11 +21,14 @@ import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
 const isDesktop = typeof window !== 'undefined' && Boolean(
-  window.__TAURI_INTERNALS__ || 
   window.__TAURI__ || 
+  window.__TAURI_INTERNALS__ || 
   window.location.hostname === 'tauri.localhost' || 
   window.location.protocol === 'tauri:'
 );
+
+const isNativeMobile = typeof window !== 'undefined' && Capacitor.isNativePlatform();
+const isWebOnly = !isDesktop && !isNativeMobile;
 
 // ==========================================
 // 1. AUTHENTICATION WRAPPER
@@ -207,7 +210,7 @@ export default function App() {
 
   if (loadingAuth) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex items-center justify-center w-full max-w-full overflow-x-hidden">
         <p className="font-bold text-gray-500">Loading Auth...</p>
       </div>
     );
@@ -215,7 +218,7 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex flex-col items-center justify-center p-4 transition-colors">
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex flex-col items-center justify-center p-4 transition-colors w-full max-w-full overflow-x-hidden">
         <div className="bg-white dark:bg-[#121215] p-8 md:p-12 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 text-center max-w-md w-full">
           <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 dark:from-red-500 dark:via-purple-500 dark:to-indigo-400 mb-2 select-none">
             AIO Calender MK2
@@ -442,17 +445,19 @@ function MainDashboard({ user }) {
     });
   };
 
-  // 1. Set up the Android Notification Channels & Diagnostics
+  // 1. Set up the Android Notification Channels & Diagnostics (Mobile Native only)
   useEffect(() => {
     let active = true;
-    setupNotifications().then(() => {
-      if (active) {
-        refreshDiagnostics();
-      }
-    });
+    if (isNativeMobile) {
+      setupNotifications().then(() => {
+        if (active) {
+          refreshDiagnostics();
+        }
+      });
+    }
 
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && isNativeMobile) {
         refreshDiagnostics();
       }
     };
@@ -464,11 +469,13 @@ function MainDashboard({ user }) {
     };
   }, []);
 
-  // 2. Monitor Firebase data to rebuild the alarms dynamically
+  // 2. Monitor Firebase data to rebuild the alarms dynamically (Native Mobile & Desktop only)
   useEffect(() => {
     if (allSchedules && tasks && notifSettings) {
       const currentClasses = allSchedules[activeSemester] || [];
-      syncAllAlarms(currentClasses, tasks, notifSettings);
+      if (!isWebOnly) {
+        syncAllAlarms(currentClasses, tasks, notifSettings);
+      }
     }
   }, [allSchedules, tasks, activeSemester, notifSettings]);
 
@@ -671,7 +678,7 @@ function MainDashboard({ user }) {
   };
 
   return (
-    <div className="min-h-screen transition-colors duration-300 bg-gray-50 dark:bg-[#0a0a0c] text-gray-800 dark:text-gray-200 font-sans p-4 md:p-8 pb-24 md:pb-8 flex flex-col">
+    <div className="min-h-screen transition-colors duration-300 bg-gray-50 dark:bg-[#0a0a0c] text-gray-800 dark:text-gray-200 font-sans p-4 md:p-8 pb-24 md:pb-8 flex flex-col w-full max-w-full overflow-x-hidden">
       
       {/* Top Header */}
       <header className="mb-6 flex flex-col xl:flex-row justify-between xl:items-center gap-4 shrink-0 border-b border-gray-200 dark:border-gray-800/80 pb-4">
@@ -949,8 +956,8 @@ function MainDashboard({ user }) {
           )}
 
           {activeView === 'calendar' && (
-            <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm border border-gray-100 dark:border-red-900/30 flex-1 flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-auto">
+            <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm border border-gray-100 dark:border-red-900/30 flex-1 flex flex-col overflow-hidden w-full max-w-full">
+              <div className="flex-1 overflow-x-auto overflow-y-auto max-w-full overscroll-contain">
                 <div className="min-w-full lg:min-w-[800px] w-full relative pb-4">
                   <div className="hidden lg:flex border-b border-gray-200 dark:border-gray-800 sticky top-0 bg-white dark:bg-[#121215] z-20">
                       <div className="w-16 shrink-0 bg-gray-50 dark:bg-[#1a1a20]"></div> 
@@ -1042,7 +1049,7 @@ function MainDashboard({ user }) {
 
       {/* TAB 2: SCHEDULE MANAGER */}
       {activeTab === 'schedule' && (
-        <div className="flex-1 space-y-6 animate-in fade-in duration-300">
+        <div className="flex-1 space-y-6 animate-in fade-in duration-300 w-full max-w-full overflow-x-hidden">
           <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
             <h2 className="text-xl font-semibold mb-2 dark:text-red-400">Class Timetable Management</h2>
             <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Add new lectures or delete existing slots for {activeSemester}.</p>
@@ -1097,167 +1104,211 @@ function MainDashboard({ user }) {
 
       {/* TAB 3: ADVANCED SETTINGS & NOTIFICATIONS */}
       {activeTab === 'settings' && (
-        <div className="flex-1 space-y-6 animate-in fade-in duration-300 max-w-4xl">
-          <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
-            <h2 className="text-xl font-semibold mb-1 dark:text-red-400">Notification Preferences</h2>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Configure lecture reminders, deadline alerts, and device background delivery settings.</p>
-            <div className="space-y-6">
-              <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-md">Lecture Alerts</h3>
-                    <p className="text-xs text-gray-500">Receive reminders prior to your scheduled class time.</p>
-                  </div>
-                  {/* Red tick box for lecture alerts */}
-                  <input type="checkbox" checked={notifSettings.classNotifs} onChange={(e) => handleNotifSettingsChange('classNotifs', e.target.checked)} className="h-5 w-5 accent-red-600 cursor-pointer" />
-                </div>
-                {notifSettings.classNotifs && (
-                  <div className="flex items-center gap-3 pt-2 border-t border-gray-200 dark:border-gray-800">
-                  <span className="text-sm font-medium">Remind me:</span>
-                  <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-300 dark:border-gray-700 rounded-md pr-2 w-full sm:w-64">
-                    <select value={notifSettings.classLeadTime} onChange={(e) => handleNotifSettingsChange('classLeadTime', e.target.value)} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 text-sm outline-none font-bold cursor-pointer p-2">
-                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="5">5 minutes before</option>
-                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="10">10 minutes before</option>
-                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="15">15 minutes before</option>
-                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="20">20 minutes before</option>
-                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="30">30 minutes before</option>
-                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="45">45 minutes before</option>
-                      <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="60">1 hour before</option>
-                    </select>
-                  </div>
-                </div>
-                )}
-              </div>
-              <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-md">Task & Assignment Alerts</h3>
-                    <p className="text-xs text-gray-500">Scheduled reminders for assignments, quizzes, and projects.</p>
-                  </div>
-                  {/* Red tick box for task alerts */}
-                  <input type="checkbox" checked={notifSettings.taskNotifs} onChange={(e) => handleNotifSettingsChange('taskNotifs', e.target.checked)} className="h-5 w-5 accent-red-600 cursor-pointer" />
-                </div>
-                {notifSettings.taskNotifs && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-200 dark:border-gray-800">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium whitespace-nowrap">Remind me:</span>
-                      <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-300 dark:border-gray-700 rounded-md pr-2 w-full">
-                        <select value={notifSettings.taskLeadTime} onChange={(e) => handleNotifSettingsChange('taskLeadTime', e.target.value)} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 text-sm outline-none font-bold cursor-pointer p-2">
-                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="15">15 minutes before</option>
-                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="60">1 hour before</option>
-                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="1440">1 day before</option>
-                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="10080">1 week before</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium whitespace-nowrap">Repetition:</span>
-                      <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-300 dark:border-gray-700 rounded-md pr-2 w-full">
-                        <select value={notifSettings.taskRepeatFrequency} onChange={(e) => handleNotifSettingsChange('taskRepeatFrequency', e.target.value)} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 text-sm outline-none font-bold cursor-pointer p-2">
-                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="once">Once only</option>
-                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="daily">Daily Digest (Morning/Evening)</option>
-                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="hourly">Every Hour</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* --- VIBRATION TOGGLE --- */}
-              <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-md">Haptic Feedback</h3>
-                    <p className="text-xs text-gray-500">Allow notifications to physically vibrate the device.</p>
-                  </div>
-                  <input 
-                    type="checkbox" 
-                    checked={notifSettings.vibrateEnabled !== false} 
-                    onChange={(e) => handleNotifSettingsChange('vibrateEnabled', e.target.checked)} 
-                    className="h-5 w-5 accent-red-600 cursor-pointer" 
-                  />
+        <div className="flex-1 space-y-6 animate-in fade-in duration-300 max-w-4xl w-full">
+          {isWebOnly ? (
+            /* --- WEB CLIENT MODE INFORMATIONAL CARD --- */
+            <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-blue-900/30">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 text-xl">
+                  🌐
+                </span>
+                <div>
+                  <h2 className="text-xl font-semibold dark:text-blue-400">Web Client Mode</h2>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs">Cloud Timetable & Task Management View</p>
                 </div>
               </div>
 
-              {/* --- WINDOWS DESKTOP PREFERENCES (Rendered only on Desktop) --- */}
-              {isDesktop && (
-                <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-blue-200 dark:border-blue-900/40 space-y-4">
-                  <div className="border-b border-gray-200 dark:border-gray-800 pb-2">
-                    <h3 className="font-bold text-md flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                      <span>🖥️ Windows Desktop Preferences</span>
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      Configure background persistence and system tray behavior.
+              <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-3">
+                <div className="flex items-start gap-3">
+                  <span className="text-lg mt-0.5">ℹ️</span>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed space-y-2.5">
+                    <p>
+                      You are using the <strong className="text-gray-900 dark:text-gray-200">AIO Calender MK2 Web Client</strong>. All timetable entries, lecture schedules, and task deadlines are continuously synced to Firebase Cloud in real time.
                     </p>
+                    <p>
+                      Hardware RTC alarm scheduling, lock-screen wakeups, background notification delivery, and haptic feedback are native device benefits reserved exclusively for our native apps:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-1.5 text-gray-700 dark:text-gray-300">
+                      <li>
+                        <strong className="text-red-600 dark:text-red-400">Android APK:</strong> Zero-battery-drain RTC hardware alarms (rings accurately through Android Doze & Power Saving), full-screen lock alerts, and physical haptic vibration.
+                      </li>
+                      <li>
+                        <strong className="text-blue-600 dark:text-blue-400">Windows Desktop (.exe):</strong> Native Windows notification alerts, background System Tray persistence, and quick window restore.
+                      </li>
+                    </ul>
                   </div>
-
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* --- NATIVE NOTIFICATION PREFERENCES (Android APK & Windows Desktop) --- */
+            <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
+              <h2 className="text-xl font-semibold mb-1 dark:text-red-400">Notification Preferences</h2>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Configure lecture reminders, deadline alerts, and device background delivery settings.</p>
+              <div className="space-y-6">
+                <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="font-semibold text-sm">Minimize to System Tray on Close</h4>
-                      <p className="text-xs text-gray-500">Keep running in the background when the window is closed to maintain alarms and reminders.</p>
+                      <h3 className="font-bold text-md">Lecture Alerts</h3>
+                      <p className="text-xs text-gray-500">Receive reminders prior to your scheduled class time.</p>
                     </div>
-                    <input 
-                      type="checkbox" 
-                      checked={desktopSettings.minimizeToTray} 
-                      onChange={(e) => handleDesktopSettingToggle('minimizeToTray', e.target.checked)} 
-                      className="h-5 w-5 accent-blue-600 cursor-pointer" 
-                    />
+                    {/* Red tick box for lecture alerts */}
+                    <input type="checkbox" checked={notifSettings.classNotifs} onChange={(e) => handleNotifSettingsChange('classNotifs', e.target.checked)} className="h-5 w-5 accent-red-600 cursor-pointer" />
                   </div>
+                  {notifSettings.classNotifs && (
+                    <div className="flex items-center gap-3 pt-2 border-t border-gray-200 dark:border-gray-800">
+                      <span className="text-sm font-medium">Remind me:</span>
+                      <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-300 dark:border-gray-700 rounded-md pr-2 w-full sm:w-64">
+                        <select value={notifSettings.classLeadTime} onChange={(e) => handleNotifSettingsChange('classLeadTime', e.target.value)} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 text-sm outline-none font-bold cursor-pointer p-2">
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="5">5 minutes before</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="10">10 minutes before</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="15">15 minutes before</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="20">20 minutes before</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="30">30 minutes before</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="45">45 minutes before</option>
+                          <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="60">1 hour before</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* --- ADVANCED OPTIONS / SETTINGS --- */}
-              <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedTuning(!showAdvancedTuning)}
-                  className="w-full flex items-center justify-between text-left cursor-pointer group"
-                >
-                  <div className="pr-2">
-                    <h3 className="font-bold text-md flex items-center gap-2">
-                      <span>Advanced Settings</span>
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      System battery optimization and OEM device management.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 group-hover:bg-gray-300 dark:group-hover:bg-gray-700 transition-colors shrink-0 whitespace-nowrap">
-                    <span>{showAdvancedTuning ? 'Hide Options\u00A0▲' : 'Advanced Options\u00A0▼'}</span>
-                  </div>
-                </button>
-
-                {showAdvancedTuning && (
-                  <div className="pt-3 border-t border-gray-200 dark:border-gray-800 space-y-3">
-                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                      Alarms are scheduled using Android&apos;s native AlarmClock engine which rings accurately on Default battery mode and Power Saving mode. If your phone manufacturer has aggressive background management, you can access device settings here:
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await openBatterySettings();
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer border border-gray-300 dark:border-gray-700 flex items-center gap-1.5"
-                      >
-                        ⚙️ App Battery Settings
-                      </button>
-                      {['xiaomi', 'redmi', 'poco', 'samsung', 'oneplus', 'oppo', 'vivo', 'realme', 'huawei'].some(m => notifStatus.manufacturer?.toLowerCase().includes(m)) && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await openAutostartSettings();
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer border border-gray-300 dark:border-gray-700 flex items-center gap-1.5"
-                        >
-                          📱 Autostart Settings ({notifStatus.manufacturer ? notifStatus.manufacturer.toUpperCase() : 'OEM'})
-                        </button>
-                      )}
+                <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-md">Task & Assignment Alerts</h3>
+                      <p className="text-xs text-gray-500">Scheduled reminders for assignments, quizzes, and projects.</p>
                     </div>
+                    {/* Red tick box for task alerts */}
+                    <input type="checkbox" checked={notifSettings.taskNotifs} onChange={(e) => handleNotifSettingsChange('taskNotifs', e.target.checked)} className="h-5 w-5 accent-red-600 cursor-pointer" />
+                  </div>
+                  {notifSettings.taskNotifs && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-200 dark:border-gray-800">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium whitespace-nowrap">Remind me:</span>
+                        <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-300 dark:border-gray-700 rounded-md pr-2 w-full">
+                          <select value={notifSettings.taskLeadTime} onChange={(e) => handleNotifSettingsChange('taskLeadTime', e.target.value)} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 text-sm outline-none font-bold cursor-pointer p-2">
+                            <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="15">15 minutes before</option>
+                            <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="60">1 hour before</option>
+                            <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="1440">1 day before</option>
+                            <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="10080">1 week before</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium whitespace-nowrap">Repetition:</span>
+                        <div className="flex items-center bg-white dark:bg-[#121215] border border-gray-300 dark:border-gray-700 rounded-md pr-2 w-full">
+                          <select value={notifSettings.taskRepeatFrequency} onChange={(e) => handleNotifSettingsChange('taskRepeatFrequency', e.target.value)} className="w-full bg-transparent border-none text-gray-900 dark:text-gray-200 text-sm outline-none font-bold cursor-pointer p-2">
+                            <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="once">Once only</option>
+                            <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="daily">Daily Digest (Morning/Evening)</option>
+                            <option className="bg-white dark:bg-[#121215] text-gray-900 dark:text-gray-200" value="hourly">Every Hour</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* --- VIBRATION TOGGLE (Android APK exclusive) --- */}
+                {isNativeMobile && (
+                  <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-bold text-md">Haptic Feedback</h3>
+                        <p className="text-xs text-gray-500">Allow notifications to physically vibrate the device.</p>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={notifSettings.vibrateEnabled !== false} 
+                        onChange={(e) => handleNotifSettingsChange('vibrateEnabled', e.target.checked)} 
+                        className="h-5 w-5 accent-red-600 cursor-pointer" 
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* --- WINDOWS DESKTOP PREFERENCES (Windows .exe exclusive) --- */}
+                {isDesktop && (
+                  <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-blue-200 dark:border-blue-900/40 space-y-4">
+                    <div className="border-b border-gray-200 dark:border-gray-800 pb-2">
+                      <h3 className="font-bold text-md flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                        <span>🖥️ Windows Desktop Preferences</span>
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Configure background persistence and system tray behavior.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold text-sm">Minimize to System Tray on Close</h4>
+                        <p className="text-xs text-gray-500">Keep running in the background when the window is closed to maintain alarms and reminders.</p>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={desktopSettings.minimizeToTray} 
+                        onChange={(e) => handleDesktopSettingToggle('minimizeToTray', e.target.checked)} 
+                        className="h-5 w-5 accent-blue-600 cursor-pointer" 
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* --- ADVANCED OPTIONS / SETTINGS (Android APK exclusive) --- */}
+                {isNativeMobile && (
+                  <div className="p-4 bg-gray-50 dark:bg-[#1a1a20] rounded-xl border border-gray-200 dark:border-gray-800 space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedTuning(!showAdvancedTuning)}
+                      className="w-full flex items-center justify-between text-left cursor-pointer group"
+                    >
+                      <div className="pr-2">
+                        <h3 className="font-bold text-md flex items-center gap-2">
+                          <span>Advanced Settings</span>
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          System battery optimization and OEM device management.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 group-hover:bg-gray-300 dark:group-hover:bg-gray-700 transition-colors shrink-0 whitespace-nowrap">
+                        <span>{showAdvancedTuning ? 'Hide Options\u00A0▲' : 'Advanced Options\u00A0▼'}</span>
+                      </div>
+                    </button>
+
+                    {showAdvancedTuning && (
+                      <div className="pt-3 border-t border-gray-200 dark:border-gray-800 space-y-3">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                          Alarms are scheduled using Android&apos;s native AlarmClock engine which rings accurately on Default battery mode and Power Saving mode. If your phone manufacturer has aggressive background management, you can access device settings here:
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await openBatterySettings();
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer border border-gray-300 dark:border-gray-700 flex items-center gap-1.5"
+                          >
+                            ⚙️ App Battery Settings
+                          </button>
+                          {['xiaomi', 'redmi', 'poco', 'samsung', 'oneplus', 'oppo', 'vivo', 'realme', 'huawei'].some(m => notifStatus.manufacturer?.toLowerCase().includes(m)) && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await openAutostartSettings();
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors cursor-pointer border border-gray-300 dark:border-gray-700 flex items-center gap-1.5"
+                            >
+                              📱 Autostart Settings ({notifStatus.manufacturer ? notifStatus.manufacturer.toUpperCase() : 'OEM'})
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
-          </div>
+          )}
           <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-800">
             <h2 className="text-xl font-semibold mb-1">Account & Sync</h2>
             <div className="p-4 mt-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/40 rounded-lg flex justify-between items-center">

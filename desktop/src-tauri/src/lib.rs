@@ -499,6 +499,7 @@ pub fn run() {
                 .build(app)?;
 
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_background_color(Some(tauri::window::Color(10, 10, 12, 255)));
                 let _ = window.show();
                 let _ = window.set_focus();
             }

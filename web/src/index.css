@@ -1,3 +1,30 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+html, body {
+  background-color: #0a0a0c;
+  color: #e5e7eb;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-color: #0a0a0c;
+}
+
+input, textarea, select {
+  user-select: text;
+  -webkit-user-select: text;
+}
