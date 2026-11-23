@@ -40,7 +40,7 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
-    if (localStorage.getItem('aio-theme') === 'dark') {
+    if (localStorage.getItem('aio-theme') !== 'light') {
       document.documentElement.classList.add('dark');
     }
   }, []);
@@ -270,7 +270,7 @@ function MainDashboard({ user }) {
   // UI State
   const [gridContentType, setGridContentType] = useState('Lectures'); // New Toggle State
   const [activeTab, setActiveTab] = useState('dashboard'); 
-  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('aio-theme') === 'dark');
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('aio-theme') !== 'light');
   const [activeView, setActiveView] = useState('list'); 
   const [activeSemester, setActiveSemester] = useState(() => localStorage.getItem('aio-active-sem') || 'Monsoon 2026');
   const [viewFilter, setViewFilter] = useState('Today'); 
@@ -427,6 +427,30 @@ function MainDashboard({ user }) {
   useEffect(() => {
     if (activeSemester) localStorage.setItem('aio-active-sem', activeSemester);
   }, [activeSemester]);
+
+  // Lock horizontal pan on wheel / touchpad gestures unless over a horizontally scrollable element
+  useEffect(() => {
+    const handleWheel = (e) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        let el = e.target;
+        let canScrollX = false;
+        while (el && el !== document.body && el !== document.documentElement) {
+          const style = window.getComputedStyle(el);
+          const overflowX = style.overflowX;
+          if ((overflowX === 'auto' || overflowX === 'scroll') && el.scrollWidth > el.clientWidth) {
+            canScrollX = true;
+            break;
+          }
+          el = el.parentElement;
+        }
+        if (!canScrollX) {
+          e.preventDefault();
+        }
+      }
+    };
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, []);
 
   // Notification Diagnostics State
   const [notifStatus, setNotifStatus] = useState({
@@ -713,7 +737,7 @@ function MainDashboard({ user }) {
           <button 
             onClick={() => setActiveTab('settings')} 
             className={`px-5 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center gap-2 ${activeTab === 'settings' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-red-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}>
-            ⚙️ Settings & Notifs
+            {isWebOnly ? '⚙️ Settings' : '⚙️ Settings & Notifs'}
           </button>
         </nav>
 
@@ -1336,7 +1360,7 @@ function MainDashboard({ user }) {
         </button>
         <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center py-1 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === 'settings' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
           <span className="text-lg">⚙️</span>
-          Settings & Notifs
+          {isWebOnly ? 'Settings' : 'Settings & Notifs'}
         </button>
       </div>
 
