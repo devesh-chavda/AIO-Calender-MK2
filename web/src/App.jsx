@@ -20,7 +20,12 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
-const isDesktop = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__);
+const isDesktop = typeof window !== 'undefined' && Boolean(
+  window.__TAURI_INTERNALS__ || 
+  window.__TAURI__ || 
+  window.location.hostname === 'tauri.localhost' || 
+  window.location.protocol === 'tauri:'
+);
 
 // ==========================================
 // 1. AUTHENTICATION WRAPPER
@@ -140,10 +145,10 @@ export default function App() {
           throw new Error("Desktop native bridge is unavailable.");
         }
         const tokens = await invoke('start_system_browser_auth');
-        const idToken = tokens?.id_token || tokens?.idToken;
+        const idToken = tokens?.id_token || tokens?.idToken || null;
         const accessToken = tokens?.access_token || tokens?.accessToken || null;
-        if (!idToken) {
-          throw new Error("Did not receive an ID token from desktop authentication.");
+        if (!idToken && !accessToken) {
+          throw new Error("Did not receive authorization tokens from desktop authentication.");
         }
         const credential = GoogleAuthProvider.credential(idToken, accessToken);
         await signInWithCredential(auth, credential);

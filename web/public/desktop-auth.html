@@ -188,6 +188,9 @@
         auth = getAuth(app);
         provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
+        provider.addScope('openid');
+        provider.addScope('profile');
+        provider.addScope('email');
       } catch (err) {
         setStatus('Failed to initialize Firebase Auth: ' + err.message, 'error');
       }
@@ -196,16 +199,16 @@
         if (!auth) return;
         signinBtn.disabled = true;
         btnText.textContent = 'Connecting to Google...';
-        setStatus('Please complete sign-in in the Google account picker...', 'info');
+        setStatus('Please select your Google account in the popup window...', 'info');
 
         try {
           const result = await signInWithPopup(auth, provider);
           const credential = GoogleAuthProvider.credentialFromResult(result);
-          const idToken = credential?.idToken || result?._tokenResponse?.oauthIdToken || result?._tokenResponse?.idToken;
+          const idToken = credential?.idToken || result?._tokenResponse?.oauthIdToken || '';
           const accessToken = credential?.accessToken || result?._tokenResponse?.oauthAccessToken || '';
 
-          if (!idToken) {
-            throw new Error('Google sign-in succeeded, but no ID token was returned.');
+          if (!idToken && !accessToken) {
+            throw new Error('Google sign-in succeeded, but no authorization tokens were returned.');
           }
 
           btnText.textContent = 'Sign-in Verified!';
@@ -227,7 +230,9 @@
           signinBtn.disabled = false;
           btnText.textContent = 'Continue with Google';
           if (error.code === 'auth/popup-closed-by-user') {
-            setStatus('Sign-in window closed. Click the button above to try again.', 'warning');
+            setStatus('Sign-in window closed. Click "Continue with Google" to try again.', 'warning');
+          } else if (error.code === 'auth/popup-blocked') {
+            setStatus('Popup was blocked by your browser. Please click "Continue with Google" above.', 'warning');
           } else {
             setStatus('Sign-in error: ' + (error.message || error.code), 'error');
           }
@@ -235,11 +240,7 @@
       }
 
       signinBtn.addEventListener('click', handleSignIn);
-
-      // Attempt automatic sign-in trigger on page load
-      setTimeout(() => {
-        handleSignIn();
-      }, 300);
+      signinBtn.focus();
     }
   </script>
 </body>

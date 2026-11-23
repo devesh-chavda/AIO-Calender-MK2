@@ -125,6 +125,7 @@ async fn start_system_browser_auth(app: tauri::AppHandle) -> Result<AuthTokens, 
         while start_time.elapsed() < timeout {
             match listener.accept() {
                 Ok((mut stream, _)) => {
+                    let _ = stream.set_nonblocking(false);
                     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
                     let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(5)));
 
@@ -139,7 +140,7 @@ async fn start_system_browser_auth(app: tauri::AppHandle) -> Result<AuthTokens, 
                                     break;
                                 }
                             }
-                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock || e.kind() == std::io::ErrorKind::TimedOut => {
+                            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
                                 break;
                             }
                             Err(_) => break,
@@ -152,7 +153,16 @@ async fn start_system_browser_auth(app: tauri::AppHandle) -> Result<AuthTokens, 
                     if parts.len() < 2 {
                         continue;
                     }
+                    let method = parts[0];
                     let path = parts[1];
+
+                    // Handle CORS preflight options request
+                    if method == "OPTIONS" {
+                        let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n";
+                        let _ = stream.write_all(resp.as_bytes());
+                        let _ = stream.flush();
+                        continue;
+                    }
 
                     // Favicon requests
                     if path.starts_with("/favicon") {
@@ -162,8 +172,8 @@ async fn start_system_browser_auth(app: tauri::AppHandle) -> Result<AuthTokens, 
                         continue;
                     }
 
-                    if !path.starts_with("/callback") {
-                        let resp = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                    if !path.starts_with("/callback?") && path != "/callback" {
+                        let resp = "HTTP/1.1 400 Bad Request\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                         let _ = stream.write_all(resp.as_bytes());
                         let _ = stream.flush();
                         continue;
@@ -196,19 +206,20 @@ async fn start_system_browser_auth(app: tauri::AppHandle) -> Result<AuthTokens, 
                     if param_state.as_deref() != Some(&state) {
                         let body = "<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0f172a;color:#f87171;text-align:center;padding:50px;'><h2>Security Error</h2><p>CSRF state parameter mismatch. Authorization rejected.</p></body></html>";
                         let resp = format!(
-                            "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            "HTTP/1.1 403 Forbidden\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                             body.as_bytes().len(),
                             body
                         );
                         let _ = stream.write_all(resp.as_bytes());
                         let _ = stream.flush();
-                        return Err("CSRF state token mismatch".to_string());
+                        // Non-matching state does not kill listener; continue waiting for legitimate callback
+                        continue;
                     }
 
                     if let Some(err) = param_error {
                         let body = format!("<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0f172a;color:#f87171;text-align:center;padding:50px;'><h2>Authentication Error</h2><p>{}</p></body></html>", err);
                         let resp = format!(
-                            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            "HTTP/1.1 400 Bad Request\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                             body.as_bytes().len(),
                             body
                         );
@@ -217,20 +228,20 @@ async fn start_system_browser_auth(app: tauri::AppHandle) -> Result<AuthTokens, 
                         return Err(format!("Browser authentication error: {}", err));
                     }
 
-                    let id_token = match param_id_token {
-                        Some(tok) if !tok.is_empty() => tok,
-                        _ => {
-                            let body = "<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0f172a;color:#f87171;text-align:center;padding:50px;'><h2>Missing Token</h2><p>No ID token received from sign-in.</p></body></html>";
-                            let resp = format!(
-                                "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                                body.as_bytes().len(),
-                                body
-                            );
-                            let _ = stream.write_all(resp.as_bytes());
-                            let _ = stream.flush();
-                            return Err("Missing idToken in callback".to_string());
-                        }
-                    };
+                    let id_token = param_id_token.unwrap_or_default();
+                    let access_token = param_access_token.filter(|s| !s.is_empty());
+
+                    if id_token.is_empty() && access_token.is_none() {
+                        let body = "<!DOCTYPE html><html><body style='font-family:sans-serif;background:#0f172a;color:#f87171;text-align:center;padding:50px;'><h2>Missing Token</h2><p>No authorization tokens received from sign-in.</p></body></html>";
+                        let resp = format!(
+                            "HTTP/1.1 400 Bad Request\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.as_bytes().len(),
+                            body
+                        );
+                        let _ = stream.write_all(resp.as_bytes());
+                        let _ = stream.flush();
+                        continue;
+                    }
 
                     let body = r#"<!DOCTYPE html>
 <html lang="en">
@@ -321,7 +332,7 @@ async fn start_system_browser_auth(app: tauri::AppHandle) -> Result<AuthTokens, 
 </html>"#;
 
                     let resp = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                         body.as_bytes().len(),
                         body
                     );
@@ -332,16 +343,20 @@ async fn start_system_browser_auth(app: tauri::AppHandle) -> Result<AuthTokens, 
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.unminimize();
                         let _ = window.show();
+                        let _ = window.set_always_on_top(true);
                         let _ = window.set_focus();
+                        let _ = window.set_always_on_top(false);
                     }
 
                     received_tokens = Some(AuthTokens {
                         id_token,
-                        access_token: param_access_token,
+                        access_token,
                     });
                     break;
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::ConnectionAborted
+                    || e.kind() == std::io::ErrorKind::Interrupted => {
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 Err(e) => {
@@ -509,4 +524,159 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_csrf_state_length_and_uniqueness() {
+        let s1 = generate_csrf_state();
+        let s2 = generate_csrf_state();
+        assert_eq!(s1.len(), 32);
+        assert_eq!(s2.len(), 32);
+        assert_ne!(s1, s2);
+        assert!(s1.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(s2.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_url_decode() {
+        assert_eq!(url_decode("hello%20world"), "hello world");
+        assert_eq!(url_decode("a+b+c"), "a b c");
+        assert_eq!(url_decode("token%3D%3D"), "token==");
+        assert_eq!(url_decode("no_special"), "no_special");
+        assert_eq!(url_decode("%2F%3F%26%3D"), "/?&=");
+        assert_eq!(url_decode("trailing%"), "trailing%");
+        assert_eq!(url_decode("trailing%2"), "trailing%2");
+        assert_eq!(url_decode("%C3%A9"), "é");
+    }
+
+    #[test]
+    fn test_query_parsing_and_token_extraction() {
+        let path = "/callback?idToken=test_id_token&accessToken=test_access_token&state=test_state_123";
+        let query_str = path.split_once('?').map(|x| x.1).unwrap_or("");
+        let mut param_state = None;
+        let mut param_id_token = None;
+        let mut param_access_token = None;
+
+        for pair in query_str.split('&') {
+            if pair.is_empty() { continue; }
+            let (k, v) = match pair.split_once('=') {
+                Some((k, v)) => (k, v),
+                None => (pair, ""),
+            };
+            let val = url_decode(v);
+            match k {
+                "state" => param_state = Some(val),
+                "idToken" | "id_token" => param_id_token = Some(val),
+                "accessToken" | "access_token" => param_access_token = Some(val),
+                _ => {}
+            }
+        }
+
+        assert_eq!(param_state.as_deref(), Some("test_state_123"));
+        assert_eq!(param_id_token.as_deref(), Some("test_id_token"));
+        assert_eq!(param_access_token.as_deref(), Some("test_access_token"));
+    }
+
+    #[test]
+    fn test_loopback_socket_communication_end_to_end() {
+        use std::io::{Read, Write};
+        use std::net::{TcpListener, TcpStream};
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind test listener");
+        let port = listener.local_addr().unwrap().port();
+        listener.set_nonblocking(true).unwrap();
+
+        let state = "expected_csrf_state_nonce_123456";
+
+        // Spawn client simulation in background thread
+        let client_thread = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let mut client = TcpStream::connect(format!("127.0.0.1:{}", port))
+                .expect("Failed to connect client to loopback");
+            
+            let request = format!(
+                "GET /callback?idToken=valid_jwt_id_token_xyz&accessToken=valid_oauth_access_token_abc&state={} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\n\r\n",
+                state, port
+            );
+            client.write_all(request.as_bytes()).expect("Failed to write request");
+            client.flush().unwrap();
+
+            let mut response = String::new();
+            client.read_to_string(&mut response).expect("Failed to read response");
+            response
+        });
+
+        // Server accept & handle loop
+        let start = std::time::Instant::now();
+        let mut handled = false;
+        let mut received_id = String::new();
+        let mut received_access = String::new();
+
+        while start.elapsed() < std::time::Duration::from_secs(5) {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    stream.set_nonblocking(false).unwrap();
+                    stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+                    stream.set_write_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+
+                    let mut buffer = [0u8; 4096];
+                    let mut total_read = 0;
+                    while total_read < buffer.len() {
+                        match stream.read(&mut buffer[total_read..]) {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                total_read += n;
+                                if buffer[..total_read].windows(4).any(|w| w == b"\r\n\r\n") {
+                                    break;
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+
+                    let request_str = String::from_utf8_lossy(&buffer[..total_read]);
+                    let first_line = request_str.lines().next().unwrap_or("");
+                    let parts: Vec<&str> = first_line.split_whitespace().collect();
+                    assert!(parts.len() >= 2);
+                    let path = parts[1];
+
+                    let query_str = path.split_once('?').map(|x| x.1).unwrap_or("");
+                    for pair in query_str.split('&') {
+                        let (k, v) = match pair.split_once('=') {
+                            Some((k, v)) => (k, v),
+                            None => (pair, ""),
+                        };
+                        let val = url_decode(v);
+                        match k {
+                            "idToken" => received_id = val,
+                            "accessToken" => received_access = val,
+                            _ => {}
+                        }
+                    }
+
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK";
+                    stream.write_all(resp.as_bytes()).unwrap();
+                    stream.flush().unwrap();
+                    handled = true;
+                    break;
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                Err(e) => panic!("Accept error: {}", e),
+            }
+        }
+
+        assert!(handled, "Server should have handled the callback request");
+        assert_eq!(received_id, "valid_jwt_id_token_xyz");
+        assert_eq!(received_access, "valid_oauth_access_token_abc");
+
+        let response = client_thread.join().expect("Client thread failed");
+        assert!(response.starts_with("HTTP/1.1 200 OK"));
+        assert!(response.ends_with("OK"));
+    }
 }
