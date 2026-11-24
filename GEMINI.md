@@ -29,20 +29,29 @@
 - **Tagged Releases**: Create annotated Git tags (`git tag -a`) for verified milestones.
 - **Local Recovery**: Maintain git-ignored backup bundles/archives as reliable points of return before major codebase refactors.
 
-## 7. v2.0 Codebase Freeze & v3.0 Scope
-- **v2.0 Bookmark Invariant**: The Git tag `v2.0.0-stable-milestone` and local recovery bundle serve as the permanent bookmark for the verified v2.0 release. If anything goes wrong during refactoring, return to this point immediately.
-- **Codebase Freezing**: Strictly NO further changes to Android `.apk` files (`android/` or `mobile/`) and NO further changes to web files (`src/` or `web/`). Their features and logic are complete, tested, and frozen.
-- **v3.0 Target (Windows x64 Native)**: All future work from this point onwards is strictly confined to organizing files into a modular monorepo structure (`web/`, `mobile/`, `desktop/`, `release-builds/`) and building the native Windows x64 `.exe` application.
+## 7. Milestone Checkpoints & Points of Return
+- **Checkpoint 1 (v2.0)**: Annotated Git tag `v2.0.0-stable-milestone` and `checkpoints/aio-calender-mk2-backup-v2.0.bundle` serve as the verified v2.0 baseline.
+- **Checkpoint 2 (v3.0)**: Annotated Git tag `v3.0.0-stable-milestone` and `checkpoints/aio-calender-mk2-backup-v3.0.bundle` serve as the verified v3.0 release (Windows x64 Native Client, RFC 8252 Loopback OAuth, zero overscroll rubber-banding, and platform UI segregation).
+- **Dual Checkpoint Invariant**: Never remove or overwrite Checkpoint 1 (`v2.0.0-stable-milestone`). Both Checkpoint 1 and Checkpoint 2 must permanently coexist on GitHub and in `checkpoints/`.
 
 ## 8. Modular Monorepo Architecture
 - **Web Frontend (`web/`)**: React 19 + Tailwind CSS + Vite web client. Output directory `web/dist/`.
 - **Android Native Client (`mobile/`)**: Capacitor 8 + Android Native Java project in `mobile/android/`. Output APKs signed and packaged via Gradle.
-- **Windows Native Client (`desktop/`)**: Dedicated module for Windows x64 native client.
-- **Local Releases (`release-builds/`)**: Local staging directory for production binaries (`AIO-Calender-MK2.apk`, Windows executables). Strictly ignored by `.gitignore` and `.vercelignore`.
+- **Windows Native Client (`desktop/`)**: Dedicated Tauri v2 module for Windows x64 native client.
+- **Local Releases (`release-builds/`)**: Local staging directory for production binaries (`AIO-Calender-MK2.apk`, `AIO-Calender-MK2-Portable.exe`, `AIO-Calender-MK2-Setup.exe`). Strictly ignored by `.gitignore` and `.vercelignore`.
+- **Milestone Backups (`checkpoints/`)**: Permanent storage directory for milestone bundles and archives.
 
 ## 9. Windows System & Registry Integrity
 - **Zero Registry Modification**: Never modify, add, or delete Windows registry keys (`HKCU\...\Run`, `HKLM`, etc.), system directories, or startup configurations.
 - **No System File Tampering**: All desktop settings must remain strictly in application-local memory or local app storage (`desktop-config.json`).
 - **Registry & Autostart Purge**: The Windows native client strictly does not register autostart keys or alter Windows OS startup configuration. Background persistence is managed exclusively via the in-memory System Tray lifecycle.
+
+## 10. Checkpoints Directory Invariant (`checkpoints/`)
+- **Hands-off Rule**: Never edit, modify, replace, or delete files inside `c:\Agy\aio-calender-mk2\checkpoints\` unless explicitly commanded by the user.
+- **Purpose**: Acts as an unalterable, permanent point of return for verified app releases.
+
+## 11. Pre-Commit Verification Gate
+- **Zero Secrets to Git**: Never commit without running a diff check for private keys, API keys, Firebase service account keys, `.env*` files, or deployment tokens.
+
 
 
