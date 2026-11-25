@@ -53,5 +53,9 @@
 ## 11. Pre-Commit Verification Gate
 - **Zero Secrets to Git**: Never commit without running a diff check for private keys, API keys, Firebase service account keys, `.env*` files, or deployment tokens.
 
+## 12. Append-Only Documentation Integrity (`GEMINI.md` & `HANDOFF.md`)
+- **Never Delete Existing Text**: Never delete, trim, or overwrite existing text, rules, architecture notes, or history entries in `GEMINI.md` or `HANDOFF.md`.
+- **Additive Updates Only**: Only append new sections, entries, or clarifications to `GEMINI.md` and `HANDOFF.md` unless the user explicitly instructs otherwise.
+
 
 

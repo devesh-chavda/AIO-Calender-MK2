@@ -17,31 +17,40 @@
       })();
     </script>
     <style>
-      html, body {
+      html {
         background-color: #0a0a0c;
         overscroll-behavior: none;
         overscroll-behavior-x: none;
         overscroll-behavior-y: none;
         overflow-x: hidden;
+        overflow-y: auto;
+        width: 100%;
+        min-height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      @supports (overflow-x: clip) {
+        html {
+          overflow-x: clip;
+        }
+      }
+      body {
+        background-color: #0a0a0c;
         width: 100%;
         min-height: 100%;
         margin: 0;
         padding: 0;
         user-select: none;
         -webkit-user-select: none;
-        touch-action: pan-y;
       }
       #root {
         width: 100%;
         min-height: 100vh;
-        overflow-x: hidden;
+        overflow-x: clip;
         background-color: #0a0a0c;
       }
       html:not(.dark), html:not(.dark) body, html:not(.dark) #root {
         background-color: #f9fafb;
-      }
-      .overflow-x-auto {
-        touch-action: auto;
       }
       input, textarea, select {
         user-select: text;

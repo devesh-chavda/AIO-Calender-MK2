@@ -210,7 +210,7 @@ export default function App() {
 
   if (loadingAuth) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex items-center justify-center w-full max-w-full overflow-x-hidden">
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex items-center justify-center w-full max-w-full overflow-x-clip">
         <p className="font-bold text-gray-500">Loading Auth...</p>
       </div>
     );
@@ -218,7 +218,7 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex flex-col items-center justify-center p-4 transition-colors w-full max-w-full overflow-x-hidden">
+      <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0c] flex flex-col items-center justify-center p-4 transition-colors w-full max-w-full overflow-x-clip">
         <div className="bg-white dark:bg-[#121215] p-8 md:p-12 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 text-center max-w-md w-full">
           <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-purple-600 to-indigo-600 dark:from-red-500 dark:via-purple-500 dark:to-indigo-400 mb-2 select-none">
             AIO Calender MK2
@@ -427,30 +427,6 @@ function MainDashboard({ user }) {
   useEffect(() => {
     if (activeSemester) localStorage.setItem('aio-active-sem', activeSemester);
   }, [activeSemester]);
-
-  // Lock horizontal pan on wheel / touchpad gestures unless over a horizontally scrollable element
-  useEffect(() => {
-    const handleWheel = (e) => {
-      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        let el = e.target;
-        let canScrollX = false;
-        while (el && el !== document.body && el !== document.documentElement) {
-          const style = window.getComputedStyle(el);
-          const overflowX = style.overflowX;
-          if ((overflowX === 'auto' || overflowX === 'scroll') && el.scrollWidth > el.clientWidth) {
-            canScrollX = true;
-            break;
-          }
-          el = el.parentElement;
-        }
-        if (!canScrollX) {
-          e.preventDefault();
-        }
-      }
-    };
-    window.addEventListener('wheel', handleWheel, { passive: false });
-    return () => window.removeEventListener('wheel', handleWheel);
-  }, []);
 
   // Notification Diagnostics State
   const [notifStatus, setNotifStatus] = useState({
@@ -702,7 +678,7 @@ function MainDashboard({ user }) {
   };
 
   return (
-    <div className="min-h-screen transition-colors duration-300 bg-gray-50 dark:bg-[#0a0a0c] text-gray-800 dark:text-gray-200 font-sans p-4 md:p-8 pb-24 md:pb-8 flex flex-col w-full max-w-full overflow-x-hidden">
+    <div className="min-h-screen transition-colors duration-300 bg-gray-50 dark:bg-[#0a0a0c] text-gray-800 dark:text-gray-200 font-sans p-4 md:p-8 pb-24 md:pb-8 flex flex-col w-full max-w-full overflow-x-clip">
       
       {/* Top Header */}
       <header className="mb-6 flex flex-col xl:flex-row justify-between xl:items-center gap-4 shrink-0 border-b border-gray-200 dark:border-gray-800/80 pb-4">
@@ -828,7 +804,7 @@ function MainDashboard({ user }) {
           </div>
 
           {activeView === 'list' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-y-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
               <div className="lg:col-span-2 space-y-6">
                 <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
                   <div className="flex justify-between items-center mb-6">
@@ -981,7 +957,7 @@ function MainDashboard({ user }) {
 
           {activeView === 'calendar' && (
             <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm border border-gray-100 dark:border-red-900/30 flex-1 flex flex-col overflow-hidden w-full max-w-full">
-              <div className="flex-1 overflow-x-auto overflow-y-auto max-w-full overscroll-contain">
+              <div className="flex-1 overflow-x-auto max-w-full">
                 <div className="min-w-full lg:min-w-[800px] w-full relative pb-4">
                   <div className="hidden lg:flex border-b border-gray-200 dark:border-gray-800 sticky top-0 bg-white dark:bg-[#121215] z-20">
                       <div className="w-16 shrink-0 bg-gray-50 dark:bg-[#1a1a20]"></div> 
@@ -1073,7 +1049,7 @@ function MainDashboard({ user }) {
 
       {/* TAB 2: SCHEDULE MANAGER */}
       {activeTab === 'schedule' && (
-        <div className="flex-1 space-y-6 animate-in fade-in duration-300 w-full max-w-full overflow-x-hidden">
+        <div className="flex-1 space-y-6 animate-in fade-in duration-300 w-full max-w-full overflow-x-clip">
           <div className="bg-white dark:bg-[#121215] rounded-xl shadow-sm p-6 border border-gray-100 dark:border-red-900/30">
             <h2 className="text-xl font-semibold mb-2 dark:text-red-400">Class Timetable Management</h2>
             <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">Add new lectures or delete existing slots for {activeSemester}.</p>
