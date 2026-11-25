@@ -1325,20 +1325,20 @@ function MainDashboard({ user }) {
       )} {/* <-- This correctly closes the Settings Tab! */}
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] z-50 flex justify-around">
-        <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center py-1 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === 'dashboard' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
-          <span className="text-lg">📊</span>
+      <nav aria-label="Primary mobile navigation" className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-[#121215]/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] pl-[max(8px,env(safe-area-inset-left,0px))] pr-[max(8px,env(safe-area-inset-right,0px))] z-50 grid grid-cols-3 items-center">
+        <button type="button" onClick={() => setActiveTab('dashboard')} aria-current={activeTab === 'dashboard' ? 'page' : undefined} className={`w-full min-w-0 min-h-[44px] flex flex-col items-center justify-center py-1 px-1 rounded-lg text-[length:min(0.75rem,18px)] leading-[1.333333] font-bold transition-all cursor-pointer ${activeTab === 'dashboard' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
+          <span className="text-lg" aria-hidden="true">📊</span>
           Dashboard
         </button>
-        <button onClick={() => setActiveTab('schedule')} className={`flex flex-col items-center py-1 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === 'schedule' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
-          <span className="text-lg">✏️</span>
+        <button type="button" onClick={() => setActiveTab('schedule')} aria-current={activeTab === 'schedule' ? 'page' : undefined} className={`w-full min-w-0 min-h-[44px] flex flex-col items-center justify-center py-1 px-1 rounded-lg text-[length:min(0.75rem,18px)] leading-[1.333333] font-bold transition-all cursor-pointer ${activeTab === 'schedule' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
+          <span className="text-lg" aria-hidden="true">✏️</span>
           Schedule
         </button>
-        <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center py-1 px-4 rounded-lg text-xs font-bold transition-all ${activeTab === 'settings' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
-          <span className="text-lg">⚙️</span>
-          {isWebOnly ? 'Settings' : 'Settings & Notifs'}
+        <button type="button" onClick={() => setActiveTab('settings')} aria-current={activeTab === 'settings' ? 'page' : undefined} className={`w-full min-w-0 min-h-[44px] flex flex-col items-center justify-center py-1 px-1 rounded-lg text-[length:min(0.75rem,18px)] leading-[1.333333] font-bold transition-all cursor-pointer ${activeTab === 'settings' ? 'text-blue-600 dark:text-red-400' : 'text-gray-400'}`}>
+          <span className="text-lg" aria-hidden="true">⚙️</span>
+          Settings
         </button>
-      </div>
+      </nav>
 
     </div>
   );

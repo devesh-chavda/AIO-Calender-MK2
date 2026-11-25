@@ -318,3 +318,24 @@ cmd /c "call .tools\env.cmd cargo test --manifest-path desktop\src-tauri\Cargo.t
 npm --prefix desktop run build
 ```
 *(Compiled executables are automatically copied to `release-builds/AIO-Calender-MK2-Portable.exe` and `release-builds/AIO-Calender-MK2-Setup.exe`)*
+
+
+---
+
+## 13. Mobile Bottom Navigation Bar Centering & Label Restoration
+- **Mobile Bottom Bar (`web/src/App.jsx`)**: Restored the 3rd bottom-navigation tab label on Android/mobile (`< md`) back to **`Settings`** (matching original MK1 `Dashboard | Schedule | Settings`, while preserving `Settings & Notifs` on Desktop top navigation), switched the mobile bar from `flex justify-around` to an equal-width 3-column grid (`grid grid-cols-3 items-center` in a `<nav aria-label="Primary mobile navigation">` with `min-h-[44px]` touch targets and safe-area padding) so the middle `Schedule` tab sits dead-center across all phone viewports, and added mobile-only `scroll-padding-bottom` in `web/src/index.css`. Rebuilt `web/dist/`, synced Capacitor (`npm --prefix mobile run cap:sync`), and packaged signed `release-builds/AIO-Calender-MK2.apk`.
+
+---
+
+## 14. Checkpoint 3 — Pre-Testing Verified Baseline (`v3.1.0-pre-testing-checkpoint`)
+- **Git Tag**: `v3.1.0-pre-testing-checkpoint` (annotated tag on `main`, pushed to GitHub `origin`).
+- **Local Recovery Location**: `checkpoints/aio-calender-mk2-backup-v3.1-pre-testing.bundle` & `.zip`.
+- **Scope**: Clean verified baseline across Web, Windows x64 Native Desktop (`.exe`), and Android Native APK (including wheel/touchpad scrolling fixes and mobile bottom navigation bar restoration) created immediately prior to stress testing and security breach auditing.
+- **Recovery Commands**:
+```powershell
+# Restore to Checkpoint 3 (Pre-Testing Baseline)
+git checkout v3.1.0-pre-testing-checkpoint
+
+# Restore from local Git bundle if git remote is unavailable
+git clone checkpoints/aio-calender-mk2-backup-v3.1-pre-testing.bundle aio-calender-mk2-restored
+```

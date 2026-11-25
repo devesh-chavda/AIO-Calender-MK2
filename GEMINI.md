@@ -57,5 +57,11 @@
 - **Never Delete Existing Text**: Never delete, trim, or overwrite existing text, rules, architecture notes, or history entries in `GEMINI.md` or `HANDOFF.md`.
 - **Additive Updates Only**: Only append new sections, entries, or clarifications to `GEMINI.md` and `HANDOFF.md` unless the user explicitly instructs otherwise.
 
+## 13. Checkpoint 3 — Pre-Testing Verified Baseline (`v3.1.0-pre-testing-checkpoint`)
+- **Annotated Git Tag**: `v3.1.0-pre-testing-checkpoint` (pushed to GitHub `origin`).
+- **Local Recovery Artifacts**: `checkpoints/aio-calender-mk2-backup-v3.1-pre-testing.bundle` and `checkpoints/aio-calender-mk2-backup-v3.1-pre-testing.zip`.
+- **Scope**: Verified Web, Windows x64 Desktop (`.exe`), and Android APK state including in-app vertical wheel/touchpad scrolling restoration (`c70b1b5`) and mobile bottom navigation bar centering & `Settings` label restoration prior to A/B stress testing and security red-team auditing.
+- **Triple Checkpoint Invariant**: Never remove, overwrite, or modify Checkpoint 1 (`v2.0.0-stable-milestone`), Checkpoint 2 (`v3.0.0-stable-milestone`), or Checkpoint 3 (`v3.1.0-pre-testing-checkpoint`) tags or archive/bundle files in `checkpoints/`.
+
 
 

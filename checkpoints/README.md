@@ -47,3 +47,23 @@ git bundle verify checkpoints/aio-calender-mk2-backup-v3.0.bundle
 # Fetch directly from bundle
 git fetch checkpoints/aio-calender-mk2-backup-v3.0.bundle main:restored-v3.0
 ```
+
+---
+
+### Checkpoint 3 (v3.1.0 Pre-Testing Baseline)
+- **Git Tag**: `v3.1.0-pre-testing-checkpoint`
+- **Bundle File**: `aio-calender-mk2-backup-v3.1-pre-testing.bundle`
+- **Zip Archive**: `aio-calender-mk2-backup-v3.1-pre-testing.zip`
+- **Scope**:
+  - Verified pre-testing baseline across Web (`aio-calender-mk2.vercel.app`), Windows x64 Native Desktop (`.exe`), and Android Native APK (`release-builds/AIO-Calender-MK2.apk`).
+  - Includes in-app vertical wheel/touchpad scrolling restoration (`c70b1b5`) and mobile bottom navigation bar centering & `Settings` label restoration.
+
+#### Restore Checkpoint 3
+```powershell
+# Restore from Git tag
+git checkout v3.1.0-pre-testing-checkpoint
+
+# Inspect & restore from local Git bundle
+git bundle verify checkpoints/aio-calender-mk2-backup-v3.1-pre-testing.bundle
+git fetch checkpoints/aio-calender-mk2-backup-v3.1-pre-testing.bundle main:restored-v3.1-pre-testing
+```

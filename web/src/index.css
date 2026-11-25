@@ -59,3 +59,9 @@ img {
   -webkit-user-drag: none;
   user-drag: none;
 }
+
+@media (max-width: 767px) {
+  html {
+    scroll-padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
